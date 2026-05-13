@@ -1,4 +1,4 @@
 interface:
   display_name: "Planrock"
-  short_description: "Inspect and continue saved workspace plans."
+  short_description: "Create, inspect, and continue saved plans."
   default_prompt: "Show the current saved plan status."
