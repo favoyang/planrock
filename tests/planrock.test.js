@@ -15,6 +15,15 @@ function makeWorkingDir() {
 function writePlan(workingDir, filename, frontmatter, body) {
   const plansDir = path.join(workingDir, "plans");
   fs.mkdirSync(plansDir, { recursive: true });
+  const extraFrontmatter = Object.entries(frontmatter)
+    .filter(
+      ([key, value]) =>
+        !["title", "state", "created_at", "closed_at"].includes(key) &&
+        value !== undefined &&
+        value !== null,
+    )
+    .map(([key, value]) => `${key}: ${value}`);
+
   fs.writeFileSync(
     path.join(plansDir, filename),
     [
@@ -23,6 +32,7 @@ function writePlan(workingDir, filename, frontmatter, body) {
       `state: ${frontmatter.state}`,
       `created_at: ${frontmatter.created_at}`,
       frontmatter.closed_at ? `closed_at: ${frontmatter.closed_at}` : null,
+      ...extraFrontmatter,
       "---",
       "",
       body,
@@ -72,6 +82,10 @@ test("status --working-dir emits workingDir JSON and checklist counts", () => {
   assert.equal(report.recentOpenPlans[0].checklistDone, 1);
   assert.equal(report.recentOpenPlans[0].checklistTotal, 2);
   assert.equal(report.recentOpenPlans[0].completionPercent, 50);
+  assert.equal(report.recentOpenPlans[0].priority, "P2");
+  assert.equal(report.recentOpenPlans[0].agent, "");
+  assert.equal(report.recentOpenPlans[0].agentClaimExpiresAt, "");
+  assert.equal(report.recentOpenPlans[0].agentClaimActive, false);
 });
 
 test("--workspace remains a compatibility alias for --working-dir", () => {
@@ -139,4 +153,259 @@ test("PLANROCK_WORKING_DIR selects the working directory", () => {
   const report = JSON.parse(result.stdout);
   assert.equal(report.workingDir, workingDir);
   assert.equal(report.recentOpenPlans[0].title, "Env Plan");
+});
+
+test("open defaults to priority sort then newest created_at", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "new-normal.md",
+    {
+      title: "New Normal",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P2",
+    },
+    "- [ ] Normal work",
+  );
+  writePlan(
+    workingDir,
+    "old-high.md",
+    {
+      title: "Old High",
+      state: "open",
+      created_at: "2026-05-14",
+      priority: "P1",
+    },
+    "- [ ] Important work",
+  );
+  writePlan(
+    workingDir,
+    "new-high.md",
+    {
+      title: "New High",
+      state: "open",
+      created_at: "2026-05-15",
+      priority: "P1",
+    },
+    "- [ ] Important newer work",
+  );
+  writePlan(
+    workingDir,
+    "emergency.md",
+    {
+      title: "Emergency",
+      state: "open",
+      created_at: "2026-05-13",
+      priority: "P0",
+    },
+    "- [ ] Stop the world",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(
+    report.openPlans.map((plan) => plan.title),
+    ["Emergency", "New High", "Old High", "New Normal"],
+  );
+});
+
+test("open --sort time uses newest created_at only", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "new-normal.md",
+    {
+      title: "New Normal",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P2",
+    },
+    "- [ ] Normal work",
+  );
+  writePlan(
+    workingDir,
+    "old-emergency.md",
+    {
+      title: "Old Emergency",
+      state: "open",
+      created_at: "2026-05-14",
+      priority: "P0",
+    },
+    "- [ ] Emergency work",
+  );
+
+  const result = runPlanrock([
+    "open",
+    "--working-dir",
+    workingDir,
+    "--sort",
+    "time",
+    "--json",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(
+    report.openPlans.map((plan) => plan.title),
+    ["New Normal", "Old Emergency"],
+  );
+});
+
+test("status --sort time uses newest created_at for recent open plans", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "new-normal.md",
+    {
+      title: "New Normal",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P2",
+    },
+    "- [ ] Normal work",
+  );
+  writePlan(
+    workingDir,
+    "old-emergency.md",
+    {
+      title: "Old Emergency",
+      state: "open",
+      created_at: "2026-05-14",
+      priority: "P0",
+    },
+    "- [ ] Emergency work",
+  );
+
+  const result = runPlanrock([
+    "status",
+    "--working-dir",
+    workingDir,
+    "--sort=time",
+    "--json",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(
+    report.recentOpenPlans.map((plan) => plan.title),
+    ["New Normal", "Old Emergency"],
+  );
+});
+
+test("open --sort priority is accepted explicitly", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "normal.md",
+    {
+      title: "Normal",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P2",
+    },
+    "- [ ] Normal work",
+  );
+  writePlan(
+    workingDir,
+    "high.md",
+    {
+      title: "High",
+      state: "open",
+      created_at: "2026-05-15",
+      priority: "P1",
+    },
+    "- [ ] High work",
+  );
+
+  const result = runPlanrock([
+    "open",
+    "--working-dir",
+    workingDir,
+    "--sort=priority",
+    "--json",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(
+    report.openPlans.map((plan) => plan.title),
+    ["High", "Normal"],
+  );
+});
+
+test("human open output includes priority and active expired missing agent claims", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "active.md",
+    {
+      title: "Active Claim",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent: "codex",
+      agent_claim_expires_at: "2999-05-16T02:06:47+08:00",
+    },
+    "- [ ] Active",
+  );
+  writePlan(
+    workingDir,
+    "expired.md",
+    {
+      title: "Expired Claim",
+      state: "open",
+      created_at: "2026-05-15",
+      priority: "P2",
+      agent: "claude-code",
+      agent_claim_expires_at: "2000-05-16T02:06:47+08:00",
+    },
+    "- [ ] Expired",
+  );
+  writePlan(
+    workingDir,
+    "missing.md",
+    {
+      title: "Missing Claim",
+      state: "open",
+      created_at: "2026-05-14",
+    },
+    "- [ ] Missing",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Priority\s+Agent\s+Created/);
+  assert.match(result.stdout, /P1\s+codex until 02:06\s+2026-05-16/);
+  assert.match(result.stdout, /P2\s+expired claude-code\s+2026-05-15/);
+  assert.match(result.stdout, /P2\s+-\s+2026-05-14/);
+});
+
+test("JSON output includes raw agent fields and computed active claim", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "claimed.md",
+    {
+      title: "Claimed",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent: "cursor-agent",
+      agent_claim_expires_at: "2999-05-16T02:06:47+08:00",
+    },
+    "- [ ] Claimed",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.openPlans[0].priority, "P1");
+  assert.equal(report.openPlans[0].agent, "cursor-agent");
+  assert.equal(report.openPlans[0].agentClaimExpiresAt, "2999-05-16T02:06:47+08:00");
+  assert.equal(report.openPlans[0].agentClaimActive, true);
 });
