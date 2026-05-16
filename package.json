@@ -1,6 +1,10 @@
 {
   "name": "planrock-skill",
+  "version": "0.1.0",
   "private": true,
+  "bin": {
+    "planrock": "scripts/planrock"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js"
   }
