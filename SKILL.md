@@ -13,10 +13,11 @@ Use the bundled CLI first for read-only plan inventory requests:
 node <skill-dir>/scripts/planrock status --working-dir <working-dir>
 node <skill-dir>/scripts/planrock open --working-dir <working-dir>
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --sort time
+node <skill-dir>/scripts/planrock open --working-dir <working-dir> --full-agent-session
 node <skill-dir>/scripts/planrock closed --working-dir <working-dir>
 ```
 
-Add `--json` when structured output helps automation or follow-up analysis.
+Add `--json` when structured output helps automation or follow-up analysis. Human output shortens each `agent_sessions` entry to the agent name plus 8 session ID characters, such as `codex:019e2f7f`; add `--full-agent-session` to show the complete values.
 
 Use `plans/` directly under the current working directory as the convention. Do not search parent directories for a different `plans/` directory. If `<working-dir>/plans` does not exist, warn the user that no `plans/` directory was found in the current working directory and ask for a different working directory only when the request cannot proceed without it.
 
@@ -28,7 +29,7 @@ Use `plans/` directly under the current working directory as the convention. Do 
 
 By default, `status` and `open` sort open plans by `priority` (`P0`, `P1`, `P2`, `P3`, `P4`) and then newest `created_at`. Use `--sort time` for the old newest-created-first behavior, or `--sort priority` to spell the default explicitly.
 
-The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, `closed_at`, and `agent_session`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
+The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, and `closed_at`, reads list frontmatter key `agent_sessions`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
 
 ## Priority
 
@@ -52,7 +53,7 @@ title: <short title>
 state: open
 priority: P2
 created_at: <YYYY-MM-DD>
-agent_session:
+agent_sessions: []
 ---
 ```
 
@@ -64,17 +65,19 @@ When the user asks to continue, implement, or inspect a specific saved plan:
 
 1. Run `node <skill-dir>/scripts/planrock open --working-dir <working-dir> --json` unless the plan file is already known.
 2. Open the relevant plan Markdown file.
-3. When starting or continuing implementation work on the plan, set `agent_session` in frontmatter as a simple signal that an agent session is working on or has worked on the plan. For Codex, use the `CODEX_THREAD_ID` environment variable when available. Do not update `agent_session` for read-only inspection.
+3. When starting or continuing implementation work on the plan, update `agent_sessions` in frontmatter as a simple signal that agent sessions are working on or have worked on the plan. For Codex, use `codex:<CODEX_THREAD_ID>` when `CODEX_THREAD_ID` is available. If the current Codex entry is not in the list, append it. If it already exists, move that entry to the end so the latest active session is last. Do not update `agent_sessions` for read-only inspection.
 4. Summarize the current state and identify the next concrete unchecked step.
 5. Before editing any repository code, follow the working directory or repository instructions that govern that plan.
 6. Keep the plan checklist current during execution. Mark completed items with `- [x]` soon after completing them so progress can sync through the saved plan.
 7. After completing a plan item, update the plan file if appropriate and state the next concrete step.
 8. When a plan is genuinely complete, close it according to that working directory's plan rules.
 
-Agent session frontmatter example:
+Agent sessions frontmatter example:
 
 ```yaml
-agent_session: 019e2f18-930f-7052-999f-e3b083d9373f
+agent_sessions:
+  - codex:01932f7f-930f-7052-999f-e3b083d9373f
+  - codex:982f38ab-930f-7052-999f-e3b083d9373f
 ```
 
 ## Output Guidance

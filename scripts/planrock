@@ -12,6 +12,7 @@ function parseArgs(argv) {
   const options = {
     command: "status",
     json: false,
+    fullAgentSession: false,
     workingDir: null,
     sort: "priority",
   };
@@ -21,6 +22,8 @@ function parseArgs(argv) {
 
     if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--full-agent-session") {
+      options.fullAgentSession = true;
     } else if (arg === "--working-dir" || arg === "--workspace") {
       const value = args[index + 1];
       if (!value) {
@@ -90,26 +93,85 @@ function parseFrontmatter(content) {
   const frontmatter = content.slice(4, end).split(/\r?\n/);
   const values = {};
 
-  for (const line of frontmatter) {
+  for (let index = 0; index < frontmatter.length; index += 1) {
+    const line = frontmatter[index];
     const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (!match) {
       continue;
     }
 
     const key = match[1];
-    let value = match[2].trim();
+    const value = match[2].trim();
 
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+    if (value === "") {
+      const items = [];
+      let nextIndex = index + 1;
+
+      while (nextIndex < frontmatter.length) {
+        const itemMatch = frontmatter[nextIndex].match(/^\s*-\s*(.*)$/);
+        if (!itemMatch) {
+          break;
+        }
+
+        items.push(unquoteValue(itemMatch[1].trim()));
+        nextIndex += 1;
+      }
+
+      values[key] = items.length > 0 ? items : value;
+      index = nextIndex - 1;
+      continue;
     }
 
-    values[key] = value;
+    values[key] = unquoteValue(value);
   }
 
   return values;
+}
+
+function unquoteValue(value) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function normalizeAgentSessions(frontmatter) {
+  if (Array.isArray(frontmatter.agent_sessions)) {
+    return frontmatter.agent_sessions.filter((session) => session !== "");
+  }
+
+  if (frontmatter.agent_sessions) {
+    if (frontmatter.agent_sessions === "[]") {
+      return [];
+    }
+
+    return [frontmatter.agent_sessions];
+  }
+
+  if (frontmatter.agent_session) {
+    return [frontmatter.agent_session];
+  }
+
+  return [];
+}
+
+function formatAgentSessionId(session, fullAgentSession) {
+  if (fullAgentSession) {
+    return session;
+  }
+
+  const separatorIndex = session.indexOf(":");
+  if (separatorIndex === -1) {
+    return session.slice(0, 8);
+  }
+
+  const agentName = session.slice(0, separatorIndex);
+  const sessionId = session.slice(separatorIndex + 1);
+  return `${agentName}:${sessionId.slice(0, 8)}`;
 }
 
 function countChecklistItems(content) {
@@ -163,7 +225,7 @@ function readPlans(plansDir, sort = "priority") {
       priority: normalizePriority(frontmatter.priority),
       createdAt: frontmatter.created_at || "",
       closedAt: frontmatter.closed_at || "",
-      agentSession: frontmatter.agent_session || "",
+      agentSessions: normalizeAgentSessions(frontmatter),
       checklistDone: checklist.done,
       checklistTotal: checklist.total,
       completionPercent: completionPercent(checklist.done, checklist.total),
@@ -251,17 +313,36 @@ function printSummary(summary) {
   console.log(`Closed: ${summary.closed}`);
 }
 
-function printOpenPlans(plans) {
-  console.log("Open Plans");
-  printTable(plans, [
+function formatAgentSessions(plan, fullAgentSession) {
+  if (plan.agentSessions.length === 0) {
+    return "-";
+  }
+
+  return plan.agentSessions
+    .map((session) => formatAgentSessionId(session, fullAgentSession))
+    .join(", ");
+}
+
+function openPlanColumns(fullAgentSession) {
+  return [
     { label: "Priority", value: (plan) => plan.priority },
-    { label: "Agent Session", value: (plan) => plan.agentSession || "-" },
-    { label: "Created", value: (plan) => plan.createdAt },
-    { label: "Done", value: (plan) => plan.checklistDone },
-    { label: "Total", value: (plan) => plan.checklistTotal },
-    { label: "Percent", value: (plan) => `${plan.completionPercent}%` },
     { label: "Title", value: (plan) => plan.title },
-  ]);
+    { label: "Created", value: (plan) => plan.createdAt },
+    {
+      label: "Done/Total",
+      value: (plan) => `${plan.checklistDone}/${plan.checklistTotal}`,
+    },
+    { label: "Percent", value: (plan) => `${plan.completionPercent}%` },
+    {
+      label: "Agent Sessions",
+      value: (plan) => formatAgentSessions(plan, fullAgentSession),
+    },
+  ];
+}
+
+function printOpenPlans(plans, fullAgentSession) {
+  console.log("Open Plans");
+  printTable(plans, openPlanColumns(fullAgentSession));
 }
 
 function printClosedPlans(plans) {
@@ -273,11 +354,11 @@ function printClosedPlans(plans) {
   ]);
 }
 
-function printHumanReport(command, report) {
+function printHumanReport(command, report, fullAgentSession) {
   console.log(`Working dir: ${report.workingDir}`);
 
   if (command === "open") {
-    printOpenPlans(report.openPlans);
+    printOpenPlans(report.openPlans, fullAgentSession);
     return;
   }
 
@@ -289,15 +370,10 @@ function printHumanReport(command, report) {
   printSummary(report.summary);
   console.log("");
   console.log(`Top Open Plans (top ${STATUS_LIMIT})`);
-  printTable(report.openPlans.slice(0, STATUS_LIMIT), [
-    { label: "Priority", value: (plan) => plan.priority },
-    { label: "Agent Session", value: (plan) => plan.agentSession || "-" },
-    { label: "Created", value: (plan) => plan.createdAt },
-    { label: "Done", value: (plan) => plan.checklistDone },
-    { label: "Total", value: (plan) => plan.checklistTotal },
-    { label: "Percent", value: (plan) => `${plan.completionPercent}%` },
-    { label: "Title", value: (plan) => plan.title },
-  ]);
+  printTable(
+    report.openPlans.slice(0, STATUS_LIMIT),
+    openPlanColumns(fullAgentSession),
+  );
   console.log("");
   console.log(`Most Recent Closed Plans (top ${STATUS_LIMIT})`);
   printTable(report.closedPlans.slice(0, STATUS_LIMIT), [
@@ -345,7 +421,7 @@ function printJsonReport(command, report) {
 }
 
 function printHelp() {
-  console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json]
+  console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session]
 
 Commands:
   status   Show summary plus the 10 highest-priority open plans and 10 most recent closed plans.
@@ -355,6 +431,7 @@ Commands:
 Options:
   --working-dir <path>  Working directory containing plans/.
   --sort priority|time  Sort open plans by priority then created time, or by created time only.
+  --full-agent-session  Show complete agent_sessions values in human tables.
   --json                Emit machine-readable JSON.
 `);
 }
@@ -366,7 +443,7 @@ function main() {
     options = parseArgs(process.argv.slice(2));
   } catch (error) {
     console.error(error.message);
-    console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json]");
+    console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session]");
     process.exit(1);
   }
 
@@ -394,7 +471,7 @@ function main() {
     return;
   }
 
-  printHumanReport(options.command, report);
+  printHumanReport(options.command, report, options.fullAgentSession);
 }
 
 main();

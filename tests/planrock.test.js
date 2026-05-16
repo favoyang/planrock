@@ -22,7 +22,13 @@ function writePlan(workingDir, filename, frontmatter, body) {
         value !== undefined &&
         value !== null,
     )
-    .map(([key, value]) => `${key}: ${value}`);
+    .flatMap(([key, value]) => {
+      if (Array.isArray(value)) {
+        return [`${key}:`, ...value.map((item) => `  - ${item}`)];
+      }
+
+      return [`${key}: ${value}`];
+    });
 
   fs.writeFileSync(
     path.join(plansDir, filename),
@@ -83,7 +89,7 @@ test("status --working-dir emits workingDir JSON and checklist counts", () => {
   assert.equal(report.recentOpenPlans[0].checklistTotal, 2);
   assert.equal(report.recentOpenPlans[0].completionPercent, 50);
   assert.equal(report.recentOpenPlans[0].priority, "P2");
-  assert.equal(report.recentOpenPlans[0].agentSession, "");
+  assert.deepEqual(report.recentOpenPlans[0].agentSessions, []);
 });
 
 test("--workspace remains a compatibility alias for --working-dir", () => {
@@ -334,7 +340,7 @@ test("open --sort priority is accepted explicitly", () => {
   );
 });
 
-test("human open output includes priority and agent session", () => {
+test("human open output includes priority, title, progress, and short agent sessions", () => {
   const workingDir = makeWorkingDir();
   writePlan(
     workingDir,
@@ -344,7 +350,10 @@ test("human open output includes priority and agent session", () => {
       state: "open",
       created_at: "2026-05-16",
       priority: "P1",
-      agent_session: "019e2f18-930f-7052-999f-e3b083d9373f",
+      agent_sessions: [
+        "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+        "codex:982f38ab-930f-7052-999f-e3b083d9373f",
+      ],
     },
     "- [ ] Agent session work",
   );
@@ -362,12 +371,50 @@ test("human open output includes priority and agent session", () => {
   const result = runPlanrock(["open", "--working-dir", workingDir]);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Priority\s+Agent Session\s+Created/);
-  assert.match(result.stdout, /P1\s+019e2f18-930f-7052-999f-e3b083d9373f\s+2026-05-16/);
-  assert.match(result.stdout, /P2\s+-\s+2026-05-14/);
+  assert.match(
+    result.stdout,
+    /Priority\s+Title\s+Created\s+Done\/Total\s+Percent\s+Agent Sessions/,
+  );
+  assert.match(
+    result.stdout,
+    /P1\s+Agent Session Plan\s+2026-05-16\s+0\/1\s+0%\s+codex:019e2f18, codex:982f38ab/,
+  );
+  assert.match(
+    result.stdout,
+    /P2\s+Missing Agent\s+2026-05-14\s+0\/1\s+0%\s+-/,
+  );
 });
 
-test("JSON output includes agent session field only", () => {
+test("human open output can include full agent session", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "agent-session.md",
+    {
+      title: "Agent Session Plan",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent_sessions: ["codex:019e2f18-930f-7052-999f-e3b083d9373f"],
+    },
+    "- [ ] Agent session work",
+  );
+
+  const result = runPlanrock([
+    "open",
+    "--working-dir",
+    workingDir,
+    "--full-agent-session",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /P1\s+Agent Session Plan\s+2026-05-16\s+0\/1\s+0%\s+codex:019e2f18-930f-7052-999f-e3b083d9373f/,
+  );
+});
+
+test("JSON output includes agent sessions field only", () => {
   const workingDir = makeWorkingDir();
   writePlan(
     workingDir,
@@ -377,7 +424,7 @@ test("JSON output includes agent session field only", () => {
       state: "open",
       created_at: "2026-05-16",
       priority: "P1",
-      agent_session: "019e2f18-930f-7052-999f-e3b083d9373f",
+      agent_sessions: ["codex:019e2f18-930f-7052-999f-e3b083d9373f"],
     },
     "- [ ] Agent session",
   );
@@ -393,11 +440,59 @@ test("JSON output includes agent session field only", () => {
     "priority",
     "createdAt",
     "closedAt",
-    "agentSession",
+    "agentSessions",
     "checklistDone",
     "checklistTotal",
     "completionPercent",
   ]);
   assert.equal(report.openPlans[0].priority, "P1");
-  assert.equal(report.openPlans[0].agentSession, "019e2f18-930f-7052-999f-e3b083d9373f");
+  assert.deepEqual(report.openPlans[0].agentSessions, [
+    "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+  ]);
+});
+
+test("legacy agent_session is read as one agent session", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "agent-session.md",
+    {
+      title: "Legacy Agent Session",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent_session: "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+    },
+    "- [ ] Agent session",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(report.openPlans[0].agentSessions, [
+    "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+  ]);
+});
+
+test("agent_sessions empty inline list is read as no agent sessions", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "agent-sessions.md",
+    {
+      title: "Empty Agent Sessions",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent_sessions: "[]",
+    },
+    "- [ ] Agent session",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(report.openPlans[0].agentSessions, []);
 });
