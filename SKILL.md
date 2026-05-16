@@ -28,7 +28,7 @@ Use `plans/` directly under the current working directory as the convention. Do 
 
 By default, `status` and `open` sort open plans by `priority` (`P0`, `P1`, `P2`, `P3`, `P4`) and then newest `created_at`. Use `--sort time` for the old newest-created-first behavior, or `--sort priority` to spell the default explicitly.
 
-The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, `closed_at`, `agent`, and `agent_claim_expires_at`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`. JSON output also includes computed camelCase fields such as `agentClaimExpiresAt` and `agentClaimActive`; do not store `agentClaimActive` in frontmatter.
+The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, `closed_at`, and `agent_session`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
 
 ## Priority
 
@@ -52,6 +52,7 @@ title: <short title>
 state: open
 priority: P2
 created_at: <YYYY-MM-DD>
+agent_session:
 ---
 ```
 
@@ -62,20 +63,18 @@ Then write a concise checklist of concrete implementation steps using `- [ ]`.
 When the user asks to continue, implement, or inspect a specific saved plan:
 
 1. Run `node <skill-dir>/scripts/planrock open --working-dir <working-dir> --json` unless the plan file is already known.
-2. Avoid plans with a future `agent_claim_expires_at` unless the user explicitly asks you to work on that plan. Expired or missing claim timestamps do not block picking the plan.
-3. Open the relevant plan Markdown file.
-4. When starting or continuing implementation work on the plan, set or refresh `agent` and `agent_claim_expires_at` in frontmatter. Use `agent: codex` for Codex unless the user or runtime identifies a different display name, and set `agent_claim_expires_at` to a timestamp 60 minutes in the future with timezone offset, such as `2026-05-16T02:06:47+08:00`. Do not claim a plan for read-only inspection.
-5. If you are still working and the claim is about to expire, extend `agent_claim_expires_at`.
-6. Summarize the current state and identify the next concrete unchecked step.
-7. Before editing any repository code, follow the working directory or repository instructions that govern that plan.
-8. After completing a plan item, update the plan file if appropriate and state the next concrete step.
-9. When a plan is genuinely complete, close it according to that working directory's plan rules.
+2. Open the relevant plan Markdown file.
+3. When starting or continuing implementation work on the plan, set `agent_session` in frontmatter as a simple signal that an agent session is working on or has worked on the plan. For Codex, use the `CODEX_THREAD_ID` environment variable when available. Do not update `agent_session` for read-only inspection.
+4. Summarize the current state and identify the next concrete unchecked step.
+5. Before editing any repository code, follow the working directory or repository instructions that govern that plan.
+6. Keep the plan checklist current during execution. Mark completed items with `- [x]` soon after completing them so progress can sync through the saved plan.
+7. After completing a plan item, update the plan file if appropriate and state the next concrete step.
+8. When a plan is genuinely complete, close it according to that working directory's plan rules.
 
-Claim frontmatter example:
+Agent session frontmatter example:
 
 ```yaml
-agent: codex
-agent_claim_expires_at: 2026-05-16T02:06:47+08:00
+agent_session: 019e2f18-930f-7052-999f-e3b083d9373f
 ```
 
 ## Output Guidance

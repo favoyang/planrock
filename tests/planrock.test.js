@@ -83,9 +83,7 @@ test("status --working-dir emits workingDir JSON and checklist counts", () => {
   assert.equal(report.recentOpenPlans[0].checklistTotal, 2);
   assert.equal(report.recentOpenPlans[0].completionPercent, 50);
   assert.equal(report.recentOpenPlans[0].priority, "P2");
-  assert.equal(report.recentOpenPlans[0].agent, "");
-  assert.equal(report.recentOpenPlans[0].agentClaimExpiresAt, "");
-  assert.equal(report.recentOpenPlans[0].agentClaimActive, false);
+  assert.equal(report.recentOpenPlans[0].agentSession, "");
 });
 
 test("--workspace remains a compatibility alias for --working-dir", () => {
@@ -336,39 +334,25 @@ test("open --sort priority is accepted explicitly", () => {
   );
 });
 
-test("human open output includes priority and active expired missing agent claims", () => {
+test("human open output includes priority and agent session", () => {
   const workingDir = makeWorkingDir();
   writePlan(
     workingDir,
-    "active.md",
+    "agent-session.md",
     {
-      title: "Active Claim",
+      title: "Agent Session Plan",
       state: "open",
       created_at: "2026-05-16",
       priority: "P1",
-      agent: "codex",
-      agent_claim_expires_at: "2999-05-16T02:06:47+08:00",
+      agent_session: "019e2f18-930f-7052-999f-e3b083d9373f",
     },
-    "- [ ] Active",
-  );
-  writePlan(
-    workingDir,
-    "expired.md",
-    {
-      title: "Expired Claim",
-      state: "open",
-      created_at: "2026-05-15",
-      priority: "P2",
-      agent: "claude-code",
-      agent_claim_expires_at: "2000-05-16T02:06:47+08:00",
-    },
-    "- [ ] Expired",
+    "- [ ] Agent session work",
   );
   writePlan(
     workingDir,
     "missing.md",
     {
-      title: "Missing Claim",
+      title: "Missing Agent",
       state: "open",
       created_at: "2026-05-14",
     },
@@ -378,34 +362,42 @@ test("human open output includes priority and active expired missing agent claim
   const result = runPlanrock(["open", "--working-dir", workingDir]);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Priority\s+Agent\s+Created/);
-  assert.match(result.stdout, /P1\s+codex until 02:06\s+2026-05-16/);
-  assert.match(result.stdout, /P2\s+expired claude-code\s+2026-05-15/);
+  assert.match(result.stdout, /Priority\s+Agent Session\s+Created/);
+  assert.match(result.stdout, /P1\s+019e2f18-930f-7052-999f-e3b083d9373f\s+2026-05-16/);
   assert.match(result.stdout, /P2\s+-\s+2026-05-14/);
 });
 
-test("JSON output includes raw agent fields and computed active claim", () => {
+test("JSON output includes agent session field only", () => {
   const workingDir = makeWorkingDir();
   writePlan(
     workingDir,
-    "claimed.md",
+    "agent-session.md",
     {
-      title: "Claimed",
+      title: "Agent Session",
       state: "open",
       created_at: "2026-05-16",
       priority: "P1",
-      agent: "cursor-agent",
-      agent_claim_expires_at: "2999-05-16T02:06:47+08:00",
+      agent_session: "019e2f18-930f-7052-999f-e3b083d9373f",
     },
-    "- [ ] Claimed",
+    "- [ ] Agent session",
   );
 
   const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
 
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
+  assert.deepEqual(Object.keys(report.openPlans[0]), [
+    "file",
+    "title",
+    "state",
+    "priority",
+    "createdAt",
+    "closedAt",
+    "agentSession",
+    "checklistDone",
+    "checklistTotal",
+    "completionPercent",
+  ]);
   assert.equal(report.openPlans[0].priority, "P1");
-  assert.equal(report.openPlans[0].agent, "cursor-agent");
-  assert.equal(report.openPlans[0].agentClaimExpiresAt, "2999-05-16T02:06:47+08:00");
-  assert.equal(report.openPlans[0].agentClaimActive, true);
+  assert.equal(report.openPlans[0].agentSession, "019e2f18-930f-7052-999f-e3b083d9373f");
 });
