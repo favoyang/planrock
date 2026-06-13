@@ -86,7 +86,7 @@ feat: add a new CLI command
 feat!: change plan file format
 ```
 
-The npm package is intended to publish through npm trusted publishing from the public `favoyang/planrock` GitHub repository. npm requires a package to already exist before a trusted publisher can be configured, so bootstrap `@favoyang/planrock` once with an npm automation token. After that first publish creates the package on npm, configure trusted publishing:
+The npm package is intended to publish through npm trusted publishing from the public `favoyang/planrock` GitHub repository. npm requires a package to already exist before a trusted publisher can be configured, so `@favoyang/planrock` was bootstrapped once as `0.0.1`. Configure trusted publishing with an npm session that can satisfy two-factor authentication:
 
 ```bash
 npm trust github @favoyang/planrock --repo favoyang/planrock --file release.yml
