@@ -1,8 +1,9 @@
 ---
 title: Publish Planrock npm package and skill
-state: open
+state: closed
 priority: P1
 created_at: 2026-06-13
+closed_at: 2026-06-13
 agent_sessions:
   - codex:019ebfe3-da12-7e90-96ae-236357cded77
 ---
@@ -10,7 +11,7 @@ agent_sessions:
 - [x] Make the Planrock repository public on GitHub and verify the public URL used by npm, README, and skill install examples.
 - [x] Confirm the npm package name before the first publish and decide whether the first package reservation happens through trusted publishing or a one-time manual publish.
 - [x] Rename/configure the npm package as `@favoyang/planrock`, remove the `private: true` publish blocker, keep the existing `planrock` CLI bin, and include only intended package files.
-- [ ] Configure npm trusted publishing for the GitHub repository as the publish source, including package provenance where supported.
+- [x] Configure npm trusted publishing for the GitHub repository as the publish source, including package provenance where supported.
 - [x] Add GitHub Actions release automation using semantic-release so version calculation, npm publishing, and any package version mutation happen only in CI and are not committed back from local development.
 - [x] Add semantic-release configuration for Semantic Commit Messages, npm publishing, GitHub releases, and a practical dry-run path.
 - [x] Add `README.md` covering what the repo contains, skill installation with `npx skills add favoyang/planrock -g -a codex -y` and URL form, and CLI installation with `npx @favoyang/planrock`, `npm install -g @favoyang/planrock`, `volta install @favoyang/planrock`, and local `npm link`.
@@ -34,3 +35,4 @@ Notes:
 - A local real semantic-release run with `CI=true` was attempted for `1.0.0`, but npm publish failed with `EOTP`. semantic-release had created and pushed tag `v1.0.0` before npm failed; the false tag was deleted locally and from GitHub, `package.json` was restored, and generated `dist/` output was removed.
 - `npm trust github @favoyang/planrock --repo favoyang/planrock --file release.yml` still fails with `E403` because npm requires two-factor authentication for the trust configuration request. This must be completed with an npm session that can satisfy 2FA, then `NPM_TRUSTED_PUBLISHING_READY=true` can be set for the GitHub release workflow.
 - After trust was manually configured, the GitHub release workflow still failed because it used `semantic-release@24` plus `actions/setup-node` `registry-url`, causing `@semantic-release/npm` to require token auth from an `.npmrc`. Workflow was updated to `semantic-release@25` and no `registry-url` so npm trusted publishing can use GitHub OIDC.
+- GitHub Actions run `27465907023` succeeded after the workflow fix. npm now reports `@favoyang/planrock@1.0.0` as `latest`, `npm exec --package @favoyang/planrock@latest -- planrock --help` works, and GitHub release `v1.0.0` was published at `https://github.com/favoyang/planrock/releases/tag/v1.0.0`.
