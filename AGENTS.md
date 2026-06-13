@@ -11,6 +11,10 @@ Use Semantic Commit Messages for every commit so semantic-release can calculate 
 
 Do not manually edit `package.json` versions for ordinary feature or fix work. GitHub Actions runs semantic-release on `main`, owns npm publishing, and commits release version updates back with `chore(release): ... [skip ci]`.
 
+After pushing to `main`, confirm GitHub Actions finishes. If semantic-release publishes a version, pull the release commit back before continuing so local `package.json` matches npm.
+
+Changes that only affect agent coordination files, such as `AGENTS.md` or `plans/**`, should not trigger the release workflow. Keep those changes isolated from runtime, package, workflow, or test changes when possible.
+
 ## Validation
 
 Before handing off changes, run:
