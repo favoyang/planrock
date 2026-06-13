@@ -26,3 +26,4 @@ Notes:
 - Release job is gated by repository variable `NPM_TRUSTED_PUBLISHING_READY=true` so the first push can establish the default branch and workflow before npm trusted publishing is configured.
 - `npm test`, `npm pack --dry-run`, and `git diff --check` pass locally. GitHub Actions test/package validation passes on `main`; the release job is intentionally skipped while `NPM_TRUSTED_PUBLISHING_READY` is unset.
 - semantic-release dry-run confirms GitHub access and push permission, but npm verification fails with `EINVALIDNPMTOKEN`; the available `NPM_TOKEN` is not valid for publishing to npm. A valid npm automation token is needed for the one-time bootstrap release.
+- Testing without `safe` and relying on `~/.npmrc` also fails `npm whoami` with `E401`; `npm publish --dry-run --tag dev --provenance=false` succeeds for tarball validation, but dry-run does not prove publish authentication.
