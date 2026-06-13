@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const packageJson = require("../package.json");
 
 const STATUS_LIMIT = 10;
 const PRIORITIES = ["P0", "P1", "P2", "P3", "P4"];
@@ -48,6 +49,8 @@ function parseArgs(argv) {
       options.command = arg;
     } else if (arg === "--help" || arg === "-h") {
       options.command = "help";
+    } else if (arg === "--version") {
+      options.command = "version";
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -421,7 +424,7 @@ function printJsonReport(command, report) {
 }
 
 function printHelp() {
-  console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session]
+  console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
 
 Commands:
   status   Show summary plus the 10 highest-priority open plans and 10 most recent closed plans.
@@ -433,6 +436,7 @@ Options:
   --sort priority|time  Sort open plans by priority then created time, or by created time only.
   --full-agent-session  Show complete agent_sessions values in human tables.
   --json                Emit machine-readable JSON.
+  --version             Print the planrock version.
 `);
 }
 
@@ -443,12 +447,17 @@ function main() {
     options = parseArgs(process.argv.slice(2));
   } catch (error) {
     console.error(error.message);
-    console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session]");
+    console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]");
     process.exit(1);
   }
 
   if (options.command === "help") {
     printHelp();
+    return;
+  }
+
+  if (options.command === "version") {
+    console.log(packageJson.version);
     return;
   }
 
