@@ -70,6 +70,14 @@ test("package exposes the planrock CLI binary", () => {
   assert.equal(packageJson.bin.planrock, "scripts/planrock");
 });
 
+test("--version prints the package version without requiring plans", () => {
+  const result = runPlanrock(["--version"], { cwd: makeWorkingDir() });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, `${packageJson.version}\n`);
+  assert.equal(result.stderr, "");
+});
+
 test("status --working-dir emits workingDir JSON and checklist counts", () => {
   const workingDir = makeWorkingDir();
   writePlan(
