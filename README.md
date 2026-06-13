@@ -103,7 +103,7 @@ gh variable set NPM_TRUSTED_PUBLISHING_READY --body true --repo favoyang/planroc
 ```bash
 npm test
 npm pack --dry-run
-npx -y semantic-release@24 --dry-run
+npx -y semantic-release@25 --dry-run
 ```
 
 ## License
