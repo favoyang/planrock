@@ -29,6 +29,8 @@ Default flow:
 8. Ask the user before merging unless the change is obviously safe and mechanical, or the user already gave merge approval in advance.
 9. After merge, update the main checkout with `git pull --ff-only`.
 
+After asking `@codex` for review, proactively check the PR review state before handing off. If review feedback appears, inspect unresolved review threads, fix all actionable blocking issues on the same branch, rerun validation, push the fixes, and request review again. Do not wait for the user to explicitly ask for the review loop to continue.
+
 When a change is merged to `main`, confirm GitHub Actions completes. If semantic-release publishes a version, pull the release commit back before continuing so local `package.json` matches npm.
 
 ## Commits And Releases
