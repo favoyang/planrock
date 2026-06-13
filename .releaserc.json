@@ -1,0 +1,18 @@
+{
+  "branches": [
+    "main"
+  ],
+  "repositoryUrl": "https://github.com/favoyang/planrock.git",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/npm",
+      {
+        "npmPublish": true,
+        "tarballDir": "dist"
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}

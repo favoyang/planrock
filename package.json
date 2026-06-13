@@ -1,9 +1,35 @@
 {
-  "name": "planrock-skill",
-  "version": "0.1.0",
-  "private": true,
+  "name": "planrock",
+  "version": "0.0.0-development",
+  "description": "Saved Markdown plan tracking for coding agents.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/favoyang/planrock.git"
+  },
+  "homepage": "https://github.com/favoyang/planrock#readme",
+  "bugs": {
+    "url": "https://github.com/favoyang/planrock/issues"
+  },
+  "keywords": [
+    "agents",
+    "cli",
+    "codex",
+    "plans",
+    "skills"
+  ],
   "bin": {
     "planrock": "scripts/planrock"
+  },
+  "files": [
+    "SKILL.md",
+    "agents/",
+    "scripts/planrock",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "test": "node --test tests/*.test.js"
