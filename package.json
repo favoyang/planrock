@@ -23,7 +23,6 @@
   },
   "files": [
     "SKILL.md",
-    "agents/",
     "scripts/planrock",
     "README.md",
     "LICENSE"

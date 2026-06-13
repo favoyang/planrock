@@ -13,7 +13,7 @@ Do not manually edit `package.json` versions for ordinary feature or fix work. G
 
 After pushing to `main`, confirm GitHub Actions finishes. If semantic-release publishes a version, pull the release commit back before continuing so local `package.json` matches npm.
 
-Changes that only affect agent coordination files, such as `AGENTS.md` or `plans/**`, should not trigger the release workflow. Keep those changes isolated from runtime, package, workflow, or test changes when possible.
+If plan updates are part of implementing a feature or fix, commit them together with that feature or fix. Only plan-only or agent-instruction-only changes should avoid release automation; use a non-release commit type and include `[skip ci]` when appropriate. The release workflow also ignores pushes that only touch `AGENTS.md` or `plans/**`.
 
 ## Validation
 
