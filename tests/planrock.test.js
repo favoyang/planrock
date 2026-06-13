@@ -7,6 +7,7 @@ const test = require("node:test");
 
 const repoRoot = path.resolve(__dirname, "..");
 const cliPath = path.join(repoRoot, "scripts", "planrock");
+const packageJson = require(path.join(repoRoot, "package.json"));
 
 function makeWorkingDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "planrock-test-"));
@@ -63,6 +64,10 @@ test("help documents --working-dir without advertising --workspace", () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /--working-dir <path>/);
   assert.doesNotMatch(result.stdout, /--workspace <path>/);
+});
+
+test("package exposes the planrock CLI binary", () => {
+  assert.equal(packageJson.bin.planrock, "scripts/planrock");
 });
 
 test("status --working-dir emits workingDir JSON and checklist counts", () => {
