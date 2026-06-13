@@ -1,5 +1,5 @@
 {
-  "name": "planrock",
+  "name": "@favoyang/planrock",
   "version": "0.0.0-development",
   "description": "Saved Markdown plan tracking for coding agents.",
   "license": "MIT",

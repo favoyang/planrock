@@ -23,20 +23,20 @@ The skill uses its bundled CLI directly, so a global `planrock` shell command is
 Run without installing:
 
 ```bash
-npx planrock status --working-dir /path/to/repo
+npx @favoyang/planrock status --working-dir /path/to/repo
 ```
 
 Install globally with npm:
 
 ```bash
-npm install -g planrock
+npm install -g @favoyang/planrock
 planrock status --working-dir /path/to/repo
 ```
 
 Install globally with Volta:
 
 ```bash
-volta install planrock
+volta install @favoyang/planrock
 planrock status --working-dir /path/to/repo
 ```
 
@@ -86,13 +86,13 @@ feat: add a new CLI command
 feat!: change plan file format
 ```
 
-The npm package is intended to publish through npm trusted publishing from the public `favoyang/planrock` GitHub repository. npm requires a package to already exist before a trusted publisher can be configured, so bootstrap the package once with an npm automation token stored as the repository secret `NPM_TOKEN`. After that first semantic-release run creates `planrock` on npm, configure trusted publishing:
+The npm package is intended to publish through npm trusted publishing from the public `favoyang/planrock` GitHub repository. npm requires a package to already exist before a trusted publisher can be configured, so bootstrap `@favoyang/planrock` once with an npm automation token. After that first publish creates the package on npm, configure trusted publishing:
 
 ```bash
-npm trust github planrock --repo favoyang/planrock --file release.yml
+npm trust github @favoyang/planrock --repo favoyang/planrock --file release.yml
 ```
 
-Then remove the temporary `NPM_TOKEN` repository secret and enable the release job:
+Then enable the release job:
 
 ```bash
 gh variable set NPM_TRUSTED_PUBLISHING_READY --body true --repo favoyang/planrock

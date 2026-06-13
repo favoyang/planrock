@@ -8,12 +8,12 @@ agent_sessions:
 ---
 
 - [x] Make the Planrock repository public on GitHub and verify the public URL used by npm, README, and skill install examples.
-- [x] Confirm `planrock` remains available on npm before the first publish and decide whether the first package reservation happens through trusted publishing or a one-time manual publish.
-- [x] Rename/configure the npm package as `planrock`, remove the `private: true` publish blocker, keep the existing `planrock` CLI bin, and include only intended package files.
+- [x] Confirm the npm package name before the first publish and decide whether the first package reservation happens through trusted publishing or a one-time manual publish.
+- [x] Rename/configure the npm package as `@favoyang/planrock`, remove the `private: true` publish blocker, keep the existing `planrock` CLI bin, and include only intended package files.
 - [ ] Configure npm trusted publishing for the GitHub repository as the publish source, including package provenance where supported.
 - [x] Add GitHub Actions release automation using semantic-release so version calculation, npm publishing, and any package version mutation happen only in CI and are not committed back from local development.
 - [x] Add semantic-release configuration for Semantic Commit Messages, npm publishing, GitHub releases, and a practical dry-run path.
-- [x] Add `README.md` covering what the repo contains, skill installation with `npx skills add favoyang/planrock -g -a codex -y` and URL form, and CLI installation with `npx planrock`, `npm install -g planrock`, `volta install planrock`, and local `npm link`.
+- [x] Add `README.md` covering what the repo contains, skill installation with `npx skills add favoyang/planrock -g -a codex -y` and URL form, and CLI installation with `npx @favoyang/planrock`, `npm install -g @favoyang/planrock`, `volta install @favoyang/planrock`, and local `npm link`.
 - [x] Add an MIT license.
 - [x] Add `AGENTS.md` if missing, including the requirement to use Semantic Commit Messages for semantic-release compatibility.
 - [x] Run tests, validate the package tarball contents, and run semantic-release dry-run where practical, then update the plan with any publish-time follow-up.
@@ -29,3 +29,4 @@ Notes:
 - After refreshing `safe` secrets, semantic-release dry-run with command-scoped `GITHUB_TOKEN,NPM_TOKEN` succeeds. It verifies npm and GitHub auth, selects initial release `1.0.0`, and skips publishing because of dry-run mode. Standalone `npm whoami` does not read `NPM_TOKEN` directly, but semantic-release writes it to a temporary `.npmrc` and verifies successfully.
 - One-time local bootstrap publish was attempted with temporary version `0.0.1` and a temporary `.npmrc` backed by `safe` `NPM_TOKEN`. npm accepted the token and reached publish, then blocked with `EOTP`; the npm account/token requires one-time browser/OTP authentication for writes. `package.json` was restored to `0.0.0-development`.
 - After updating `safe` `NPM_TOKEN`, one-time local bootstrap publish reached npm without OTP but was rejected with `E403`: unscoped package name `planrock` is too similar to existing package `la9rock`. npm suggested publishing as `@favoyang/planrock`; that scoped name currently returns 404 and appears available.
+- Switched package metadata and docs to scoped package `@favoyang/planrock`. The installed CLI command remains `planrock` via `bin.planrock`.
