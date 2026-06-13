@@ -390,6 +390,34 @@ test("human open output includes priority, title, progress, and short agent sess
   );
 });
 
+test("human open output preserves mixed agent slugs in order", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "agent-session.md",
+    {
+      title: "Mixed Agent Sessions",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent_sessions: [
+        "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+        "claude-code:claude-session-1234567890",
+        "local-agent:unknown-session-0987654321",
+      ],
+    },
+    "- [ ] Agent session work",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /P1\s+Mixed Agent Sessions\s+2026-05-16\s+0\/1\s+0%\s+codex:019e2f18, claude-code:claude-s, local-agent:unknown-/,
+  );
+});
+
 test("human open output can include full agent session", () => {
   const workingDir = makeWorkingDir();
   writePlan(
@@ -453,6 +481,36 @@ test("JSON output includes agent sessions field only", () => {
   assert.equal(report.openPlans[0].priority, "P1");
   assert.deepEqual(report.openPlans[0].agentSessions, [
     "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+  ]);
+});
+
+test("JSON output preserves supported and unknown agent session slugs", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "agent-session.md",
+    {
+      title: "Cross Agent Session",
+      state: "open",
+      created_at: "2026-05-16",
+      priority: "P1",
+      agent_sessions: [
+        "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+        "claude-code:claude-session-1234567890",
+        "local-agent:unknown-session-0987654321",
+      ],
+    },
+    "- [ ] Agent session",
+  );
+
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(report.openPlans[0].agentSessions, [
+    "codex:019e2f18-930f-7052-999f-e3b083d9373f",
+    "claude-code:claude-session-1234567890",
+    "local-agent:unknown-session-0987654321",
   ]);
 });
 

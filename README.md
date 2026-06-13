@@ -1,43 +1,45 @@
 # Planrock
 
-Planrock is a small CLI and Codex skill for saved Markdown plans. It reads plan files under a repository-local `plans/` directory, summarizes open and closed plans, and displays checklist progress plus agent session markers.
+Planrock is a small CLI and agent skill for saved Markdown plans. It reads plan files under a repository-local `plans/` directory, summarizes open and closed plans, and displays checklist progress plus agent session markers.
 
 ## Skill Install
 
-Install the Planrock skill globally for Codex:
+Install the Planrock skill globally for an agent runtime that supports skills:
 
 ```bash
-npx skills add favoyang/planrock -g -a codex -y
+npx skills add favoyang/planrock -g -y
 ```
 
 URL form:
 
 ```bash
-npx skills add https://github.com/favoyang/planrock -g -a codex -y
+npx skills add https://github.com/favoyang/planrock -g -y
 ```
 
-The skill uses its bundled CLI directly, so a global `planrock` shell command is not required for Codex to use the skill.
+You can also ask an agent with skill-install support to install `favoyang/planrock`.
+
+The skill uses its bundled CLI directly, so a global `planrock` shell command is not required for an agent to use the skill.
 
 ## CLI Install
 
 Run without installing:
 
 ```bash
-npx @favoyang/planrock status --working-dir /path/to/repo
+npx @favoyang/planrock status
 ```
 
 Install globally with npm:
 
 ```bash
 npm install -g @favoyang/planrock
-planrock status --working-dir /path/to/repo
+planrock status
 ```
 
 Install globally with Volta:
 
 ```bash
 volta install @favoyang/planrock
-planrock status --working-dir /path/to/repo
+planrock status
 ```
 
 Link from a local checkout:
@@ -46,20 +48,20 @@ Link from a local checkout:
 git clone https://github.com/favoyang/planrock.git
 cd planrock
 npm link
-planrock status --working-dir /path/to/repo
+planrock status
 ```
 
 ## Usage
 
 ```bash
-planrock status --working-dir .
-planrock open --working-dir .
-planrock open --working-dir . --sort time
-planrock open --working-dir . --full-agent-session
-planrock closed --working-dir .
+planrock status
+planrock open
+planrock open --sort time
+planrock open --full-agent-session
+planrock closed
 ```
 
-Add `--json` for machine-readable output.
+By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
 
 Plan files live directly under `plans/` and use YAML frontmatter:
 
@@ -70,11 +72,22 @@ state: open
 priority: P1
 created_at: 2026-06-13
 agent_sessions:
-  - codex:019ebfe3-da12-7e90-96ae-236357cded77
+  - codex:example-session-id
 ---
 
 - [ ] Do the next concrete step.
 ```
+
+### Agent Sessions
+
+Use `agent_sessions` to record the agent sessions that have worked on a plan. Each entry uses `<agent-slug>:<session-id>`.
+
+Supported agent slugs:
+
+- `codex`
+- `claude-code`
+
+Unknown agents should use a stable lowercase slug such as `local-agent`. Planrock preserves unknown slugs instead of rejecting them. Human output shortens each entry to the slug plus the first 8 characters of the session id, such as `claude-code:example-`; use `--full-agent-session` to show complete values.
 
 ## Release
 
@@ -86,17 +99,7 @@ feat: add a new CLI command
 feat!: change plan file format
 ```
 
-The npm package is intended to publish through npm trusted publishing from the public `favoyang/planrock` GitHub repository. npm requires a package to already exist before a trusted publisher can be configured, so `@favoyang/planrock` was bootstrapped once as `0.0.1`. Configure trusted publishing with an npm session that can satisfy two-factor authentication:
-
-```bash
-npm trust github @favoyang/planrock --repo favoyang/planrock --file release.yml
-```
-
-Then enable the release job:
-
-```bash
-gh variable set NPM_TRUSTED_PUBLISHING_READY --body true --repo favoyang/planrock
-```
+Publishing is handled by the release workflow.
 
 ## Development
 
