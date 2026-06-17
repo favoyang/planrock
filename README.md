@@ -59,9 +59,12 @@ planrock open
 planrock open --sort time
 planrock open --full-agent-session
 planrock closed
+planrock goal plans/example-plan.md
 ```
 
 By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
+
+Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal` command from the body of the plan's `## Goal` section. The output ends with a stable `plans/...` reference for the original plan file.
 
 Plan files live directly under `plans/` and use YAML frontmatter:
 
