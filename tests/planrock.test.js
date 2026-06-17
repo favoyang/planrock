@@ -119,6 +119,52 @@ test("goal prints a Codex goal command from the plan Goal section", () => {
   );
 });
 
+test("goal resolves relative plan paths against --working-dir", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "relative-goal.md",
+    {
+      title: "Relative Goal",
+      state: "open",
+      created_at: "2026-06-18",
+    },
+    ["## Goal", "", "Use the selected working directory."].join("\n"),
+  );
+
+  const result = runPlanrock(
+    ["goal", "plans/relative-goal.md", "--working-dir", workingDir],
+    { cwd: makeWorkingDir() },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Use the selected working directory\./);
+  assert.match(result.stdout, /Use plan reference: plans\/relative-goal\.md\./);
+});
+
+test("goal resolves relative plan paths against PLANROCK_WORKING_DIR", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "env-goal.md",
+    {
+      title: "Env Goal",
+      state: "open",
+      created_at: "2026-06-18",
+    },
+    ["## Goal", "", "Use the environment working directory."].join("\n"),
+  );
+
+  const result = runPlanrock(["goal", "plans/env-goal.md"], {
+    cwd: makeWorkingDir(),
+    env: { PLANROCK_WORKING_DIR: workingDir },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Use the environment working directory\./);
+  assert.match(result.stdout, /Use plan reference: plans\/env-goal\.md\./);
+});
+
 test("goal reports an error when the plan has no Goal section", () => {
   const workingDir = makeWorkingDir();
   writePlan(

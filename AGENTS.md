@@ -25,11 +25,17 @@ Default flow:
 4. Run validation before requesting review.
 5. Push the branch and open a GitHub PR.
 6. Ask `@codex` for review on the PR.
-7. Address review feedback in commits on the same branch and repeat review until no blocking issues remain.
-8. Ask the user before merging unless the change is obviously safe and mechanical, or the user already gave merge approval in advance.
-9. After merge, update the main checkout with `git pull --ff-only`.
+7. Wait for the requested review to appear before considering the PR mergeable.
+   Poll the PR review state and review threads for a reasonable interval rather
+   than merging immediately after posting `@codex review`.
+8. Address review feedback in commits on the same branch and repeat review
+   until no blocking issues remain.
+9. Ask the user before merging unless the change is obviously safe and mechanical, or the user already gave merge approval in advance.
+10. After merge, update the main checkout with `git pull --ff-only`.
 
 After asking `@codex` for review, proactively check the PR review state before handing off. If review feedback appears, inspect unresolved review threads, fix all actionable blocking issues on the same branch, rerun validation, push the fixes, and request review again. Do not wait for the user to explicitly ask for the review loop to continue.
+Do not merge while the review request is still pending or before the first
+Codex review response has appeared, even if CI is already green.
 
 When working from a plan, after finishing any item, always state the next concrete step. Continue doing this until the plan is genuinely complete so the user does not need to ask "what's next?".
 

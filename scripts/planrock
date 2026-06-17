@@ -307,12 +307,14 @@ function formatPlanReference(planPath) {
   return planPath;
 }
 
-function printGoalCommand(planPath) {
+function printGoalCommand(planPath, workingDir) {
   if (!planPath) {
     throw new Error("goal requires a path to a plan");
   }
 
-  const resolvedPlanPath = path.resolve(planPath);
+  const resolvedPlanPath = path.isAbsolute(planPath)
+    ? planPath
+    : path.resolve(workingDir, planPath);
   const content = fs.readFileSync(resolvedPlanPath, "utf8");
   const goalSection = extractGoalSection(content);
   const planReference = formatPlanReference(resolvedPlanPath);
@@ -542,7 +544,7 @@ function main() {
 
   if (options.command === "goal") {
     try {
-      printGoalCommand(options.planPath);
+      printGoalCommand(options.planPath, resolveWorkingDir(options.workingDir));
     } catch (error) {
       console.error(error.message);
       process.exit(1);

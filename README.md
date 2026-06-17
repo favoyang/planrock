@@ -66,6 +66,13 @@ By default, Planrock reads `plans/` under the current working directory. Use `--
 
 Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal` command from the body of the plan's `## Goal` section. The output ends with a stable `plans/...` reference for the original plan file.
 
+When using `--working-dir`, repo-relative goal paths resolve from that selected
+working directory:
+
+```bash
+planrock goal plans/example-plan.md --working-dir /path/to/repo
+```
+
 Plan files live directly under `plans/` and use YAML frontmatter:
 
 ```markdown
