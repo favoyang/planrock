@@ -16,6 +16,7 @@ function parseArgs(argv) {
     fullAgentSession: false,
     workingDir: null,
     sort: "priority",
+    planPath: null,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -45,7 +46,9 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg.startsWith("--sort=")) {
       options.sort = parseSort(arg.slice("--sort=".length));
-    } else if (["status", "open", "closed"].includes(arg)) {
+    } else if (options.command === "goal" && !options.planPath) {
+      options.planPath = arg;
+    } else if (["status", "open", "closed", "goal"].includes(arg)) {
       options.command = arg;
     } else if (arg === "--help" || arg === "-h") {
       options.command = "help";
@@ -247,6 +250,79 @@ function readPlans(plansDir, sort = "priority") {
   return { openPlans, closedPlans };
 }
 
+function stripFrontmatter(content) {
+  if (!content.startsWith("---\n")) {
+    return content;
+  }
+
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) {
+    return content;
+  }
+
+  return content.slice(end + "\n---".length).replace(/^\r?\n/, "");
+}
+
+function headingLevel(line) {
+  const match = line.match(/^(#{1,6})\s+/);
+  return match ? match[1].length : null;
+}
+
+function extractGoalSection(content) {
+  const lines = stripFrontmatter(content).split(/\r?\n/);
+  const startIndex = lines.findIndex((line) => /^#{1,6}\s+Goal\s*$/i.test(line));
+
+  if (startIndex === -1) {
+    throw new Error("Plan does not contain a Goal section.");
+  }
+
+  const level = headingLevel(lines[startIndex]);
+  let endIndex = lines.length;
+
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const nextLevel = headingLevel(lines[index]);
+    if (nextLevel !== null && nextLevel <= level) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  const goalBody = lines.slice(startIndex + 1, endIndex).join("\n").trim();
+
+  if (!goalBody) {
+    throw new Error("Plan Goal section is empty.");
+  }
+
+  return goalBody;
+}
+
+function formatPlanReference(planPath) {
+  const normalized = planPath.split(path.sep);
+  const plansIndex = normalized.lastIndexOf("plans");
+
+  if (plansIndex !== -1) {
+    return normalized.slice(plansIndex).join("/");
+  }
+
+  return planPath;
+}
+
+function printGoalCommand(planPath) {
+  if (!planPath) {
+    throw new Error("goal requires a path to a plan");
+  }
+
+  const resolvedPlanPath = path.resolve(planPath);
+  const content = fs.readFileSync(resolvedPlanPath, "utf8");
+  const goalSection = extractGoalSection(content);
+  const planReference = formatPlanReference(resolvedPlanPath);
+
+  console.log(`/goal
+${goalSection}
+
+Use plan reference: ${planReference}.`);
+}
+
 function compareDatesDescending(a, b) {
   return b.localeCompare(a);
 }
@@ -425,11 +501,13 @@ function printJsonReport(command, report) {
 
 function printHelp() {
   console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
+       planrock goal <path-to-plan>
 
 Commands:
   status   Show summary plus the 10 highest-priority open plans and 10 most recent closed plans.
   open     Show all open plans, priority first by default.
   closed   Show all closed plans, newest closed first.
+  goal     Print a Codex /goal command from a plan's Goal section.
 
 Options:
   --working-dir <path>  Working directory containing plans/.
@@ -448,6 +526,7 @@ function main() {
   } catch (error) {
     console.error(error.message);
     console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]");
+    console.error("       planrock goal <path-to-plan>");
     process.exit(1);
   }
 
@@ -458,6 +537,17 @@ function main() {
 
   if (options.command === "version") {
     console.log(packageJson.version);
+    return;
+  }
+
+  if (options.command === "goal") {
+    try {
+      printGoalCommand(options.planPath);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+
     return;
   }
 

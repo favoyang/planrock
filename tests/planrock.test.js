@@ -78,6 +78,93 @@ test("--version prints the package version without requiring plans", () => {
   assert.equal(result.stderr, "");
 });
 
+test("goal prints a Codex goal command from the plan Goal section", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "goal-plan.md",
+    {
+      title: "Goal Plan",
+      state: "open",
+      created_at: "2026-06-18",
+    },
+    [
+      "## Goal",
+      "",
+      "Ship the goal command.",
+      "",
+      "- Keep the output copy-pasteable.",
+      "",
+      "## Steps",
+      "",
+      "- [ ] Implement",
+    ].join("\n"),
+  );
+
+  const planPath = path.join(workingDir, "plans", "goal-plan.md");
+  const result = runPlanrock(["goal", planPath]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.stdout,
+    [
+      "/goal",
+      "Ship the goal command.",
+      "",
+      "- Keep the output copy-pasteable.",
+      "",
+      "Use plan reference: plans/goal-plan.md.",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("goal reports an error when the plan has no Goal section", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "no-goal.md",
+    {
+      title: "No Goal",
+      state: "open",
+      created_at: "2026-06-18",
+    },
+    "- [ ] Missing goal",
+  );
+
+  const result = runPlanrock([
+    "goal",
+    path.join(workingDir, "plans", "no-goal.md"),
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /Plan does not contain a Goal section\./);
+});
+
+test("goal reports an error when the Goal section is empty", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(
+    workingDir,
+    "empty-goal.md",
+    {
+      title: "Empty Goal",
+      state: "open",
+      created_at: "2026-06-18",
+    },
+    ["## Goal", "", "## Steps", "", "- [ ] Missing goal body"].join("\n"),
+  );
+
+  const result = runPlanrock([
+    "goal",
+    path.join(workingDir, "plans", "empty-goal.md"),
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /Plan Goal section is empty\./);
+});
+
 test("status --working-dir emits workingDir JSON and checklist counts", () => {
   const workingDir = makeWorkingDir();
   writePlan(

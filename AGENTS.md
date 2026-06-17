@@ -35,6 +35,20 @@ When working from a plan, after finishing any item, always state the next concre
 
 When a change is merged to `main`, confirm GitHub Actions completes. If semantic-release publishes a version, pull the release commit back before continuing so local `package.json` matches npm.
 
+For release-producing changes, the automated deploy workflow is the `Release`
+GitHub Actions workflow. After merging:
+
+- Watch the `Release` workflow on `main` until it finishes.
+- Confirm both the `Test` and `Release` jobs succeeded, unless the release job
+  is intentionally skipped by `NPM_TRUSTED_PUBLISHING_READY`.
+- Check the published package when semantic-release runs, for example
+  `npm view @favoyang/planrock version`.
+- Pull `main` again after a successful semantic-release run because the workflow
+  may push a `chore(release): ... [skip ci]` version commit back to the
+  repository.
+- Clean up the feature worktree only after local `main` includes the merge and
+  any release commit.
+
 ## Commits And Releases
 
 Use Semantic Commit Messages for every commit so semantic-release can calculate package versions:
