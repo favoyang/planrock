@@ -35,10 +35,10 @@ npm install -g @favoyang/planrock
 planrock status
 ```
 
-Install globally with Volta:
+Install globally with mise:
 
 ```bash
-volta install @favoyang/planrock
+mise use -g npm:@favoyang/planrock
 planrock status
 ```
 

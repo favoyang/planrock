@@ -14,7 +14,7 @@ agent_sessions:
 - [x] Configure npm trusted publishing for the GitHub repository as the publish source, including package provenance where supported.
 - [x] Add GitHub Actions release automation using semantic-release so version calculation, npm publishing, and any package version mutation happen only in CI and are not committed back from local development.
 - [x] Add semantic-release configuration for Semantic Commit Messages, npm publishing, GitHub releases, and a practical dry-run path.
-- [x] Add `README.md` covering what the repo contains, skill installation with `npx skills add favoyang/planrock -g -a codex -y` and URL form, and CLI installation with `npx @favoyang/planrock`, `npm install -g @favoyang/planrock`, `volta install @favoyang/planrock`, and local `npm link`.
+- [x] Add `README.md` covering what the repo contains, skill installation with `npx skills add favoyang/planrock -g -a codex -y` and URL form, and CLI installation with `npx @favoyang/planrock`, `npm install -g @favoyang/planrock`, `mise use -g npm:@favoyang/planrock`, and local `npm link`.
 - [x] Add an MIT license.
 - [x] Add `AGENTS.md` if missing, including the requirement to use Semantic Commit Messages for semantic-release compatibility.
 - [x] Run tests, validate the package tarball contents, and run semantic-release dry-run where practical, then update the plan with any publish-time follow-up.
