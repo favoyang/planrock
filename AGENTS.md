@@ -22,20 +22,24 @@ Default flow:
 1. Inspect the current state from the main checkout.
 2. Create or use a task branch worktree for implementation.
 3. Make the smallest coherent change.
-4. Run validation before requesting review.
-5. Push the branch and open a GitHub PR.
-6. Ask `@codex` for review on the PR.
-7. Wait for the requested review to appear before considering the PR mergeable.
-   Poll the PR review state and review threads for a reasonable interval rather
-   than merging immediately after posting `@codex review`.
-8. Address review feedback in commits on the same branch and repeat review
-   until no blocking issues remain.
-9. Ask the user before merging unless the change is obviously safe and mechanical, or the user already gave merge approval in advance.
-10. After merge, update the main checkout with `git pull --ff-only`.
+4. Run relevant validation.
+5. Run the review gate and address any valid findings.
+6. Commit, push the branch, and open or update the GitHub pull request.
+7. Verify required checks.
+8. Ask the user before merging unless the change is obviously safe and
+   mechanical, or the user already gave merge approval in advance.
+9. After merge, update the main checkout with `git pull --ff-only`.
 
-After asking `@codex` for review, proactively check the PR review state before handing off. If review feedback appears, inspect unresolved review threads, fix all actionable blocking issues on the same branch, rerun validation, push the fixes, and request review again. Do not wait for the user to explicitly ask for the review loop to continue.
-Do not merge while the review request is still pending or before the first
-Codex review response has appeared, even if CI is already green.
+## Review Gate
+
+Before committing, use the installed `$branch-review-loop` skill to review the
+complete branch diff. Follow the skill through any required fixes, validation,
+and re-review. If the skill is unavailable, ask the user to install it before
+continuing.
+
+Create, update, or merge the pull request only after the review gate passes.
+Merging also requires green checks unless the user explicitly accepts the
+remaining risk.
 
 When working from a plan, after finishing any item, always state the next concrete step. Continue doing this until the plan is genuinely complete so the user does not need to ask "what's next?".
 
