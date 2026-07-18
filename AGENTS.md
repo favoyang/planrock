@@ -32,10 +32,10 @@ Default flow:
 
 ## Review Gate
 
-Before committing, use the installed `$branch-review-cli-loop` skill to review the
-complete branch diff. Follow the skill through any required fixes, validation,
-and re-review. If the skill is unavailable, ask the user to install it before
-continuing.
+Before committing, use the installed `$branch-review-subagent-loop` skill to
+review the complete branch diff. Follow the skill through any required fixes,
+validation, and re-review. If the skill is unavailable, ask the user to install
+it before continuing.
 
 Create, update, or merge the pull request only after the review gate passes.
 Merging also requires green checks unless the user explicitly accepts the
