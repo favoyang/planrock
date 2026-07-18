@@ -32,7 +32,7 @@ Default flow:
 
 ## Review Gate
 
-Before committing, use the installed `$branch-review-loop` skill to review the
+Before committing, use the installed `$branch-review-cli-loop` skill to review the
 complete branch diff. Follow the skill through any required fixes, validation,
 and re-review. If the skill is unavailable, ask the user to install it before
 continuing.
