@@ -102,7 +102,7 @@ If the default npm cache is not writable, use a temporary cache:
 npm_config_cache=/private/tmp/planrock-npm-cache npm pack --dry-run
 ```
 
-# Pull Request Delivery Workflow
+## Pull Request Delivery Workflow
 
 Deliver repository changes through pull requests by default, regardless of
 size. Do not make changes directly in the main checkout unless the user
