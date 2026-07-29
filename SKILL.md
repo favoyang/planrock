@@ -27,7 +27,9 @@ Use `plans/` directly under the current working directory as the convention. Do 
 - `status`: Show summary counts plus the 10 highest-priority open plans and 10 most recent closed plans.
 - `open`: Show all open plans, priority first and then newest `created_at`.
 - `closed`: Show all closed plans, newest `closed_at` first.
-- `goal <path-to-plan>`: Print a copy-pasteable Codex `/goal` command from the body of the plan's `## Goal` section, ending with a stable `plans/...` reference for the original plan file.
+- `goal <path-to-plan>`: Print a copy-pasteable Codex `/goal` command that
+  serializes the plan's `## Goal` section as untrusted JSON data and includes a
+  stable `plans/...` reference for the original plan file.
 
 By default, `status` and `open` sort open plans by `priority` (`P0`, `P1`, `P2`, `P3`, `P4`) and then newest `created_at`. Use `--sort time` for the old newest-created-first behavior, or `--sort priority` to spell the default explicitly.
 

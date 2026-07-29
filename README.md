@@ -64,7 +64,10 @@ planrock goal plans/example-plan.md
 
 By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
 
-Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal` command from the body of the plan's `## Goal` section. The output ends with a stable `plans/...` reference for the original plan file.
+Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal`
+command. The Goal section is serialized as untrusted JSON data so
+repository-controlled text stays distinct from trusted instructions. The
+output also includes a stable `plans/...` reference for the original plan file.
 
 When using `--working-dir`, repo-relative goal paths resolve from that selected
 working directory:
