@@ -80,12 +80,15 @@ When the user asks to continue, implement, or inspect a specific saved plan:
 
 1. Run `node <skill-dir>/scripts/planrock open --working-dir <working-dir> --json` unless the plan file is already known.
 2. Open the relevant plan Markdown file.
-3. When starting or continuing implementation work on the plan, update `agent_sessions` in frontmatter as a simple signal that agent sessions are working on or have worked on the plan. For Codex, use `codex:<CODEX_THREAD_ID>` when `CODEX_THREAD_ID` is available. For Claude Code, use `claude-code:<session-id>` with the best available stable session id from its environment or runtime metadata. Other agents should use `<stable-lowercase-agent-slug>:<session-id>`. If the current session entry is not in the list, append it. If it already exists, move that entry to the end so the latest active session is last. Do not update `agent_sessions` for read-only inspection.
-4. Summarize the current state and identify the next concrete unchecked step.
-5. Before editing any repository code, follow the working directory or repository instructions that govern that plan.
-6. Keep the plan checklist current during execution. Mark completed items with `- [x]` soon after completing them so progress can sync through the saved plan.
-7. After completing a plan item, update the plan file if appropriate and state the next concrete step.
-8. When a plan is genuinely complete, close it according to that working directory's plan rules.
+3. Before editing the plan or repository code, read and follow the working directory or repository instructions that govern the plan and its implementation.
+4. Before selecting the next implementation step, reconcile the entire plan against the user's latest explicit scope. The user's latest explicit decisions override stale checklist items and prose. When continuing or implementing the plan, edit it so its current completion gates contain only the accepted scope plus requirements mandated by governing repository instructions. For read-only inspection, report scope drift without editing the plan.
+5. Record rejected, deferred, and transferred work clearly outside the current completion checklist, then remove or mark it so it no longer blocks this plan. For transferred work, link the destination plan and do not execute it in both plans or make this plan wait for it unless the user explicitly made it a dependency.
+6. Do not introduce new drills, soak periods, deliverables, or validation gates unless the user explicitly requested them or governing repository policy requires them. Preserve mandatory repository safety, testing, review, and delivery requirements.
+7. When starting or continuing implementation work on the plan, update `agent_sessions` in frontmatter as a simple signal that agent sessions are working on or have worked on the plan. For Codex, use `codex:<CODEX_THREAD_ID>` when `CODEX_THREAD_ID` is available. For Claude Code, use `claude-code:<session-id>` with the best available stable session id from its environment or runtime metadata. Other agents should use `<stable-lowercase-agent-slug>:<session-id>`. If the current session entry is not in the list, append it. If it already exists, move that entry to the end so the latest active session is last. Do not update `agent_sessions` for read-only inspection.
+8. Summarize the reconciled state and identify the next concrete unchecked step.
+9. Keep the plan checklist current during execution. Mark completed items with `- [x]` soon after completing them so progress can sync through the saved plan.
+10. After completing a plan item, update the plan file if appropriate and state the next concrete step.
+11. When a plan is genuinely complete, close it according to that working directory's plan rules.
 
 Agent sessions frontmatter example:
 
