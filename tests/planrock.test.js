@@ -8,6 +8,7 @@ const test = require("node:test");
 const repoRoot = path.resolve(__dirname, "..");
 const cliPath = path.join(repoRoot, "scripts", "planrock");
 const packageJson = require(path.join(repoRoot, "package.json"));
+const skillMarkdown = fs.readFileSync(path.join(repoRoot, "SKILL.md"), "utf8");
 
 function makeWorkingDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "planrock-test-"));
@@ -68,6 +69,43 @@ test("help documents --working-dir without advertising --workspace", () => {
 
 test("package exposes the planrock CLI binary", () => {
   assert.equal(packageJson.bin.planrock, "scripts/planrock");
+});
+
+test("continuing guidance reconciles explicit scope without inventing gates", () => {
+  const instructionsIndex = skillMarkdown.indexOf(
+    "Before editing the plan or repository code, read and follow",
+  );
+  const reconciliationIndex = skillMarkdown.indexOf(
+    "Before selecting the next implementation step, reconcile",
+  );
+
+  assert.ok(instructionsIndex >= 0);
+  assert.ok(reconciliationIndex > instructionsIndex);
+  assert.match(
+    skillMarkdown,
+    /latest explicit decisions override stale checklist items and prose/,
+  );
+  assert.match(
+    skillMarkdown,
+    /Record rejected, deferred, and transferred work clearly outside the current completion checklist/,
+  );
+  assert.match(skillMarkdown, /link the destination plan/);
+  assert.match(
+    skillMarkdown,
+    /do not execute it in both plans or make this plan wait for it unless the user explicitly made it a dependency/,
+  );
+  assert.match(
+    skillMarkdown,
+    /Do not introduce new drills, soak periods, deliverables, or validation gates unless the user explicitly requested them or governing repository policy requires them/,
+  );
+  assert.match(
+    skillMarkdown,
+    /Preserve mandatory repository safety, testing, review, and delivery requirements/,
+  );
+  assert.match(
+    skillMarkdown,
+    /For read-only inspection, report scope drift without editing the plan/,
+  );
 });
 
 test("--version prints the package version without requiring plans", () => {
