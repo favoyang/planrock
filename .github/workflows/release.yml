@@ -82,7 +82,7 @@ jobs:
       - name: Install and exercise packaged runtime
         run: |
           mkdir -p /tmp/planrock-prefix /tmp/planrock-home /tmp/planrock-workspace/plans
-          npm install --ignore-scripts --prefix /tmp/planrock-prefix packed/*.tgz
+          npm install --ignore-scripts --prefix /tmp/planrock-prefix ./packed/*.tgz
           cat > /tmp/planrock-workspace/plans/runtime.md <<'PLAN'
           ---
           title: Node 18 runtime

@@ -25,6 +25,11 @@ test("release commits both npm version manifests", () => {
   assert.deepEqual(gitPlugin[1].assets, ["package.json", "package-lock.json"]);
 });
 
+test("Node 18 runtime job installs the tarball as a local path", () => {
+  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
+  assert.match(workflow, /npm install --ignore-scripts --prefix \/tmp\/planrock-prefix \.\/packed\/\*\.tgz/);
+});
+
 test("priority badges define readable light and dark scheme pairs", () => {
   const css = fs.readFileSync(path.join(root, "dashboard", "src", "styles.css"), "utf8");
   assert.match(css, /\.priority\.P0 \{ color: #8b0018; background: #fff0f2; \}/);
