@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    "@floating-ui/react",
+    "@mantine/core",
+    "@mantine/hooks",
+    "clsx",
+    "get-nonce",
+    "react",
+    "react-dom",
+    "react-remove-scroll",
+    "react-remove-scroll-bar",
+    "react-style-singleton",
+    "scheduler",
+    "tslib",
+    "use-callback-ref",
+    "use-sidecar"
+  ]
+}

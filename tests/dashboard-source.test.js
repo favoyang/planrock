@@ -1,0 +1,49 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const root = path.resolve(__dirname, "..");
+const source = fs.readFileSync(path.join(root, "dashboard", "src", "main.jsx"), "utf8");
+const packageJson = require(path.join(root, "package.json"));
+const releaseConfig = require(path.join(root, ".releaserc.json"));
+const { DEFAULT_PORT, STORAGE_DIR } = require("../lib/constants");
+
+test("dashboard uses Mantine 9 with the accepted accessible information architecture", () => {
+  assert.match(source, /from "@mantine\/core"/); assert.match(source, /<MantineProvider defaultColorScheme="auto">/);
+  for (const label of ["Search plans", "Projects", "Open", "Closed", "Invalid", "Next up", "Registry & health", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
+  assert.match(source, /aria-label="Plan views"/); assert.match(source, /aria-label="Projects"/);
+  assert.match(source, /useId\(\)/); assert.match(source, /overview\.health\?\.state/);
+  assert.match(source, /aria-pressed=/);
+  assert.match(source, /query \|\| project \? allPlans\.filter/);
+  assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
+});
+
+test("release commits both npm version manifests", () => {
+  const gitPlugin = releaseConfig.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/git");
+  assert.deepEqual(gitPlugin[1].assets, ["package.json", "package-lock.json"]);
+});
+
+test("priority badges define readable light and dark scheme pairs", () => {
+  const css = fs.readFileSync(path.join(root, "dashboard", "src", "styles.css"), "utf8");
+  assert.match(css, /\.priority\.P0 \{ color: #8b0018; background: #fff0f2; \}/);
+  assert.match(css, /dark.*\.priority\.P0 \{ color: #fff; background: #8b0018; \}/);
+  assert.match(css, /dark.*\.priority\.P1 \{ color: #fff; background: #7a2e00; \}/);
+});
+
+test("dashboard presentation stays text-only and V1 contains no blocking surface", () => {
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML|innerHTML|markdown-to-html|blocked_reason|blocked_by|Blocked/);
+  assert.doesNotMatch(source, /https?:\/\//);
+});
+
+test("package has no runtime dependency on build tooling or TaskChef", () => {
+  assert.equal(packageJson.dependencies, undefined); assert.equal(JSON.stringify(packageJson).includes("taskchef"), false);
+  assert.equal(packageJson.engines.node, ">=18");
+});
+
+test("global ownership stays fixed to ~/.agents/planrock with invocation-only port selection", () => {
+  assert.equal(DEFAULT_PORT, 4210); assert.equal(STORAGE_DIR, path.join(os.homedir(), ".agents", "planrock"));
+  const repositoryText = fs.readFileSync(path.join(root, "lib", "constants.js"), "utf8") + fs.readFileSync(path.join(root, "scripts", "planrock"), "utf8");
+  assert.doesNotMatch(repositoryText, /PLANROCK_HOME|PLANROCK_PORT/);
+});

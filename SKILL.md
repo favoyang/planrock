@@ -5,6 +5,10 @@ description: Create, inspect, summarize, and continue Markdown saved plans store
 
 # Planrock
 
+This skill owns repository-local saved-plan creation, inspection,
+reconciliation, continuation, and closure. Use `$planrock-bootstrap` for the
+cross-project registry/index and `$planrock-dashboard` for dashboard lifecycle.
+
 ## Quick Start
 
 Use the bundled CLI first for read-only plan inventory requests:
@@ -16,6 +20,12 @@ node <skill-dir>/scripts/planrock open --working-dir <working-dir> --sort time
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --full-agent-session
 node <skill-dir>/scripts/planrock closed --working-dir <working-dir>
 node <skill-dir>/scripts/planrock goal <working-dir>/plans/<plan>.md
+```
+
+For a read-only cross-project summary after bootstrap, use:
+
+```bash
+node <skill-dir>/scripts/planrock overview --json
 ```
 
 Add `--json` when structured output helps automation or follow-up analysis. Human output shortens each `agent_sessions` entry to the agent slug plus 8 session ID characters, such as `codex:019e2f7f`; add `--full-agent-session` to show the complete values.

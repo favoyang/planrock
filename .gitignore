@@ -1,0 +1,9 @@
+dist/*
+!dist/dashboard/
+dist/dashboard/*
+!dist/dashboard/index.html
+!dist/dashboard/dependency-inventory.json
+!dist/dashboard/assets/
+!dist/dashboard/assets/*
+node_modules/
+*.tgz

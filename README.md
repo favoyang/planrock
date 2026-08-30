@@ -1,6 +1,9 @@
 # Planrock
 
-Planrock is a small CLI and agent skill for saved Markdown plans. It reads plan files under a repository-local `plans/` directory, summarizes open and closed plans, and displays checklist progress plus agent session markers.
+Planrock is a CLI, shared indexer, and set of agent skills for saved Markdown
+plans. Repository-local `plans/*.md` files stay authoritative. An optional
+cross-project registry and disposable index under `~/.agents/planrock` power a
+deterministic overview and an authenticated, on-demand localhost dashboard.
 
 ## Skill Install
 
@@ -19,6 +22,8 @@ npx skills add https://github.com/favoyang/planrock -g -y
 You can also ask an agent with skill-install support to install `favoyang/planrock`.
 
 The skill uses its bundled CLI directly, so a global `planrock` shell command is not required for an agent to use the skill.
+The repository includes CI-verified production dashboard assets so Git-based
+Skills CLI installations have the same dashboard as the published npm package.
 
 ## CLI Install
 
@@ -60,9 +65,25 @@ planrock open --sort time
 planrock open --full-agent-session
 planrock closed
 planrock goal plans/example-plan.md
+planrock project add /path/to/repository --name example
+planrock refresh
+planrock overview
+planrock dashboard start
+planrock dashboard stop
 ```
 
 By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
+
+The cross-project registry is opt-in. Every explicit root may contribute its
+own direct `plans/` and bounded child Git repositories with direct `plans/`.
+Planrock never traverses symlinks and treats linked worktrees and submodules as
+explicit-registration-only. It also performs a one-way, optional import from a
+valid fixed TaskChef schema-2 file without depending on TaskChef code or
+runtime state.
+
+The dashboard binds only to `127.0.0.1:4210` by default. `--port` overrides the
+port for that invocation and is not persisted. All plan-data and control APIs
+are authenticated; `start` returns a single-use browser bootstrap URL.
 
 Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal`
 command from the readable Goal section. The output also includes a stable

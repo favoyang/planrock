@@ -23,15 +23,36 @@
   },
   "files": [
     "SKILL.md",
+    "skills/",
     "agents/",
     "scripts/planrock",
+    "lib/",
+    "dist/dashboard/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "LICENSES/",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "build:dashboard": "vite build --config dashboard/vite.config.js",
+    "prepack": "npm run build:dashboard",
+    "test": "node --test tests/*.test.js",
+    "test:dashboard": "vitest run --config dashboard/vite.config.js",
+    "validate:package": "node scripts/validate-package.js"
+  },
+  "devDependencies": {
+    "@mantine/core": "9.5.2",
+    "@mantine/hooks": "9.5.2",
+    "@testing-library/jest-dom": "6.8.0",
+    "@testing-library/react": "16.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "26.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.2.2",
+    "vitest": "3.2.7"
   }
 }

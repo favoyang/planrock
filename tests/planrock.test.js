@@ -71,6 +71,13 @@ test("package exposes the planrock CLI binary", () => {
   assert.equal(packageJson.bin.planrock, "scripts/planrock");
 });
 
+test("legacy local commands tolerate unsupported nested frontmatter", () => {
+  const workingDir = makeWorkingDir(); const plansDir = path.join(workingDir, "plans"); fs.mkdirSync(plansDir);
+  fs.writeFileSync(path.join(plansDir, "legacy.md"), "---\ntitle: Legacy plan\nmetadata:\n  owner: team\nstate: open\ntitle: Legacy plan (updated)\ncreated_at: 2026-08-30\n---\n");
+  const result = runPlanrock(["open", "--working-dir", workingDir, "--json"]);
+  assert.equal(result.status, 0, result.stderr); const body = JSON.parse(result.stdout); assert.equal(body.openPlans.length, 1); assert.equal(body.openPlans[0].title, "Legacy plan (updated)");
+});
+
 test("continuing guidance reconciles explicit scope without inventing gates", () => {
   const instructionsIndex = skillMarkdown.indexOf(
     "Before editing the plan or repository code, read and follow",
@@ -665,7 +672,7 @@ test("human output escapes terminal controls from plan frontmatter", () => {
     workingDir,
     "terminal-control.md",
     {
-      title: "Unsafe\u001b]8;;https://evil.example\u0007Title\u009b31m",
+      title: "Unsafe\u001b]8;;https://evil.example\u0007Title\u009b31m\u202eSpoof",
       state: "open",
       created_at: "2026-05-16",
       priority: "P1",
@@ -683,7 +690,7 @@ test("human output escapes terminal controls from plan frontmatter", () => {
   );
   assert.match(
     result.stdout,
-    /Unsafe\\x1b]8;;https:\/\/evil\.example\\x07Title\\x9b31m/,
+    /Unsafe\\x1b]8;;https:\/\/evil\.example\\x07Title\\x9b31m\\u202eSpoof/,
   );
   assert.match(result.stdout, /codex:session\\x1b/);
 });
