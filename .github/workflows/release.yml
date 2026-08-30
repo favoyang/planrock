@@ -33,15 +33,82 @@ jobs:
         with:
           node-version: 22
 
-      - name: Test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test CLI, indexer, and loopback server
+        env:
+          PLANROCK_SERVER_TESTS: "1"
         run: npm test
 
-      - name: Validate package contents
-        run: npm pack --dry-run
+      - name: Test dashboard components
+        run: npm run test:dashboard
+
+      - name: Verify tracked dashboard assets are current
+        run: |
+          npm run build:dashboard
+          git diff --exit-code -- dist/dashboard
+
+      - name: Validate installed package and server
+        run: npm run validate:package
+
+      - name: Create runtime tarball
+        run: |
+          mkdir packed
+          npm pack --ignore-scripts --pack-destination packed
+
+      - name: Upload runtime tarball
+        uses: actions/upload-artifact@v5
+        with:
+          name: planrock-runtime
+          path: packed/*.tgz
+
+  runtime-node18:
+    name: Node 18 packaged runtime
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download runtime tarball
+        uses: actions/download-artifact@v6
+        with:
+          name: planrock-runtime
+          path: packed
+
+      - name: Setup Node 18
+        uses: actions/setup-node@v6
+        with:
+          node-version: 18
+
+      - name: Install and exercise packaged runtime
+        run: |
+          mkdir -p /tmp/planrock-prefix /tmp/planrock-home /tmp/planrock-workspace/plans
+          npm install --ignore-scripts --prefix /tmp/planrock-prefix packed/*.tgz
+          cat > /tmp/planrock-workspace/plans/runtime.md <<'PLAN'
+          ---
+          title: Node 18 runtime
+          state: open
+          created_at: 2026-08-30
+          ---
+
+          ## Goal
+
+          Exercise the packaged runtime.
+          PLAN
+          export HOME=/tmp/planrock-home
+          CLI=/tmp/planrock-prefix/node_modules/.bin/planrock
+          "$CLI" status --working-dir /tmp/planrock-workspace --json
+          "$CLI" project add /tmp/planrock-workspace --name runtime
+          "$CLI" refresh --json
+          "$CLI" overview --json
+          "$CLI" dashboard start --port 43118 --json
+          curl --fail --silent --show-error http://127.0.0.1:43118/
+          "$CLI" dashboard stop --port 43118
 
   release:
     name: Release
-    needs: test
+    needs:
+      - test
+      - runtime-node18
     runs-on: ubuntu-latest
     environment: release
     if: >-
@@ -58,6 +125,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Release
         env:

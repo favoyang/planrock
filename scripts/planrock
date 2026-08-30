@@ -1,594 +1,96 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
-const path = require("path");
+const path = require("node:path");
 const packageJson = require("../package.json");
+const { DEFAULT_PORT } = require("../lib/constants");
+const { dashboardStatus, mintUrl, readOwner, serveDashboard, startDashboard, stopDashboard } = require("../lib/dashboard");
+const { loadIndex, pageCollection, refreshIndex } = require("../lib/indexer");
+const { escapeTerminalControls, runGoal, runLocal } = require("../lib/local");
+const { addProject, loadRegistry, registryDiagnostics, relinkProject, removeProject } = require("../lib/registry");
+const { importTaskChef } = require("../lib/taskchef");
+const { withStorageLock } = require("../lib/security");
 
-const STATUS_LIMIT = 10;
-const PRIORITIES = ["P0", "P1", "P2", "P3", "P4"];
-const DEFAULT_PRIORITY = "P2";
-
-function parseArgs(argv) {
-  const args = [...argv];
-  const options = {
-    command: "status",
-    json: false,
-    fullAgentSession: false,
-    workingDir: null,
-    sort: "priority",
-    planPath: null,
-  };
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-
-    if (arg === "--json") {
-      options.json = true;
-    } else if (arg === "--full-agent-session") {
-      options.fullAgentSession = true;
-    } else if (arg === "--working-dir" || arg === "--workspace") {
-      const value = args[index + 1];
-      if (!value) {
-        throw new Error(`${arg} requires a path`);
-      }
-      options.workingDir = value;
-      index += 1;
-    } else if (arg.startsWith("--working-dir=")) {
-      options.workingDir = arg.slice("--working-dir=".length);
-    } else if (arg.startsWith("--workspace=")) {
-      options.workingDir = arg.slice("--workspace=".length);
-    } else if (arg === "--sort") {
-      const value = args[index + 1];
-      if (!value) {
-        throw new Error("--sort requires priority or time");
-      }
-      options.sort = parseSort(value);
-      index += 1;
-    } else if (arg.startsWith("--sort=")) {
-      options.sort = parseSort(arg.slice("--sort=".length));
-    } else if (options.command === "goal" && !options.planPath) {
-      options.planPath = arg;
-    } else if (["status", "open", "closed", "goal"].includes(arg)) {
-      options.command = arg;
-    } else if (arg === "--help" || arg === "-h") {
-      options.command = "help";
-    } else if (arg === "--version") {
-      options.command = "version";
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
+function parse(argv) {
+  const positional = []; const options = { json: false, fullAgentSession: false, workingDir: null, sort: "priority", port: undefined, limit: undefined, cursor: undefined, name: undefined, discovery: true };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--json") options.json = true;
+    else if (arg === "--full-agent-session") options.fullAgentSession = true;
+    else if (["--working-dir", "--workspace", "--sort", "--port", "--limit", "--cursor", "--name"].includes(arg)) { if (!argv[index + 1]) throw new Error(`${arg} requires a value`); options[arg.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = argv[++index]; }
+    else if (/^--(working-dir|workspace|sort|port|limit|cursor|name)=/.test(arg)) { const [key, ...rest] = arg.slice(2).split("="); options[key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = rest.join("="); }
+    else if (arg === "--no-discovery") options.discovery = false;
+    else if (arg === "--help" || arg === "-h") options.help = true;
+    else if (arg === "--version") options.version = true;
+    else if (arg.startsWith("--")) throw new Error(`Unknown argument: ${arg}`);
+    else positional.push(arg);
   }
-
-  return options;
+  if (options.workspace && !options.workingDir) options.workingDir = options.workspace;
+  if (!["priority", "time"].includes(options.sort)) throw new Error(`Unknown sort: ${options.sort}`);
+  if (options.port !== undefined && (!/^\d+$/.test(String(options.port)) || Number(options.port) < 1 || Number(options.port) > 65535)) throw new Error("--port must be an integer from 1 to 65535");
+  options.port = options.port === undefined ? undefined : Number(options.port);
+  return { positional, options };
 }
 
-function parseSort(value) {
-  if (value === "priority" || value === "time") {
-    return value;
-  }
-
-  throw new Error(`Unknown sort: ${value}`);
+function workingDir(option) { return path.resolve(option || process.env.PLANROCK_WORKING_DIR || process.env.PLANROCK_WORKSPACE || process.cwd()); }
+function escapeTerminalValue(value) { if (typeof value === "string") return escapeTerminalControls(value); if (Array.isArray(value)) return value.map(escapeTerminalValue); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [escapeTerminalControls(key), escapeTerminalValue(item)])); return value; }
+function output(value, json) { if (json) console.log(JSON.stringify(value, null, 2)); else { const safe = escapeTerminalValue(value); console.log(typeof safe === "string" ? safe : JSON.stringify(safe, null, 2)); } }
+function printOverview(snapshot, limit = 50) {
+  console.log("Planrock Overview"); console.log(`Refreshed: ${snapshot.refreshedAt}`); console.log(`Projects: ${snapshot.summary.projects}  Open: ${snapshot.summary.open}  Closed: ${snapshot.summary.closed}  Invalid: ${snapshot.summary.invalid}`);
+  if (snapshot.incomplete) console.log("Health: incomplete scan");
+  for (const item of snapshot.diagnostics.filter((entry) => entry.severity !== "info").slice(0, 10)) console.log(`${item.severity.toUpperCase()} ${item.code}: ${escapeTerminalControls(item.message)}`);
+  console.log(""); console.log("Next up"); console.log("Priority  Project  Title  Done/Total  Created"); console.log("--------  -------  -----  ----------  -------");
+  for (const plan of snapshot.openPlans.slice(0, limit)) console.log(`${escapeTerminalControls(plan.priority)}  ${escapeTerminalControls(plan.projectName)}  ${escapeTerminalControls(plan.title)}  ${plan.checklistDone}/${plan.checklistTotal}  ${escapeTerminalControls(plan.createdAt)}`);
+  if (snapshot.openPlans.length > limit) console.log(`… ${snapshot.openPlans.length - limit} more (use --json with bounded pagination)`);
 }
-
-function resolveWorkingDir(workingDirOption) {
-  if (workingDirOption) {
-    return path.resolve(workingDirOption);
-  }
-
-  if (process.env.PLANROCK_WORKING_DIR) {
-    return path.resolve(process.env.PLANROCK_WORKING_DIR);
-  }
-
-  if (process.env.PLANROCK_WORKSPACE) {
-    return path.resolve(process.env.PLANROCK_WORKSPACE);
-  }
-
-  return process.cwd();
-}
-
-function parseFrontmatter(content) {
-  if (!content.startsWith("---\n")) {
-    return {};
-  }
-
-  const end = content.indexOf("\n---", 4);
-  if (end === -1) {
-    return {};
-  }
-
-  const frontmatter = content.slice(4, end).split(/\r?\n/);
-  const values = {};
-
-  for (let index = 0; index < frontmatter.length; index += 1) {
-    const line = frontmatter[index];
-    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!match) {
-      continue;
-    }
-
-    const key = match[1];
-    const value = match[2].trim();
-
-    if (value === "") {
-      const items = [];
-      let nextIndex = index + 1;
-
-      while (nextIndex < frontmatter.length) {
-        const itemMatch = frontmatter[nextIndex].match(/^\s*-\s*(.*)$/);
-        if (!itemMatch) {
-          break;
-        }
-
-        items.push(unquoteValue(itemMatch[1].trim()));
-        nextIndex += 1;
-      }
-
-      values[key] = items.length > 0 ? items : value;
-      index = nextIndex - 1;
-      continue;
-    }
-
-    values[key] = unquoteValue(value);
-  }
-
-  return values;
-}
-
-function unquoteValue(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-
-  return value;
-}
-
-function normalizeAgentSessions(frontmatter) {
-  if (Array.isArray(frontmatter.agent_sessions)) {
-    return frontmatter.agent_sessions.filter((session) => session !== "");
-  }
-
-  if (frontmatter.agent_sessions) {
-    if (frontmatter.agent_sessions === "[]") {
-      return [];
-    }
-
-    return [frontmatter.agent_sessions];
-  }
-
-  if (frontmatter.agent_session) {
-    return [frontmatter.agent_session];
-  }
-
-  return [];
-}
-
-function formatAgentSessionId(session, fullAgentSession) {
-  if (fullAgentSession) {
-    return session;
-  }
-
-  const separatorIndex = session.indexOf(":");
-  if (separatorIndex === -1) {
-    return session.slice(0, 8);
-  }
-
-  const agentName = session.slice(0, separatorIndex);
-  const sessionId = session.slice(separatorIndex + 1);
-  return `${agentName}:${sessionId.slice(0, 8)}`;
-}
-
-function countChecklistItems(content) {
-  const totalMatches = content.match(/^\s*-\s+\[[ xX]\]/gm) || [];
-  const doneMatches = content.match(/^\s*-\s+\[[xX]\]/gm) || [];
-
-  return {
-    done: doneMatches.length,
-    total: totalMatches.length,
-  };
-}
-
-function completionPercent(done, total) {
-  if (total === 0) {
-    return 0;
-  }
-
-  return Math.round((done / total) * 100);
-}
-
-function normalizePriority(priority) {
-  return PRIORITIES.includes(priority) ? priority : DEFAULT_PRIORITY;
-}
-
-function readPlans(plansDir, sort = "priority") {
-  if (!fs.existsSync(plansDir)) {
-    throw new Error(
-      `Warning: no plans/ directory found in the current working directory. Expected saved plans under: ${plansDir}`,
-    );
-  }
-
-  const filenames = fs
-    .readdirSync(plansDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => entry.name)
-    .sort();
-
-  const openPlans = [];
-  const closedPlans = [];
-
-  for (const filename of filenames) {
-    const fullPath = path.join(plansDir, filename);
-    const content = fs.readFileSync(fullPath, "utf8");
-    const frontmatter = parseFrontmatter(content);
-    const checklist = countChecklistItems(content);
-
-    const plan = {
-      file: path.join("plans", filename),
-      title: frontmatter.title || filename,
-      state: frontmatter.state || "",
-      priority: normalizePriority(frontmatter.priority),
-      createdAt: frontmatter.created_at || "",
-      closedAt: frontmatter.closed_at || "",
-      agentSessions: normalizeAgentSessions(frontmatter),
-      checklistDone: checklist.done,
-      checklistTotal: checklist.total,
-      completionPercent: completionPercent(checklist.done, checklist.total),
-    };
-
-    if (plan.state === "open") {
-      openPlans.push(plan);
-    } else if (plan.state === "closed") {
-      closedPlans.push(plan);
-    }
-  }
-
-  openPlans.sort((a, b) => compareOpenPlans(a, b, sort));
-  closedPlans.sort((a, b) => compareDatesDescending(a.closedAt, b.closedAt));
-
-  return { openPlans, closedPlans };
-}
-
-function stripFrontmatter(content) {
-  if (!content.startsWith("---\n")) {
-    return content;
-  }
-
-  const end = content.indexOf("\n---", 4);
-  if (end === -1) {
-    return content;
-  }
-
-  return content.slice(end + "\n---".length).replace(/^\r?\n/, "");
-}
-
-function headingLevel(line) {
-  const match = line.match(/^(#{1,6})\s+/);
-  return match ? match[1].length : null;
-}
-
-function extractGoalSection(content) {
-  const lines = stripFrontmatter(content).split(/\r?\n/);
-  const startIndex = lines.findIndex((line) => /^#{1,6}\s+Goal\s*$/i.test(line));
-
-  if (startIndex === -1) {
-    throw new Error("Plan does not contain a Goal section.");
-  }
-
-  const level = headingLevel(lines[startIndex]);
-  let endIndex = lines.length;
-
-  for (let index = startIndex + 1; index < lines.length; index += 1) {
-    const nextLevel = headingLevel(lines[index]);
-    if (nextLevel !== null && nextLevel <= level) {
-      endIndex = index;
-      break;
-    }
-  }
-
-  const goalBody = lines.slice(startIndex + 1, endIndex).join("\n").trim();
-
-  if (!goalBody) {
-    throw new Error("Plan Goal section is empty.");
-  }
-
-  return goalBody;
-}
-
-function formatPlanReference(planPath) {
-  const normalized = planPath.split(path.sep);
-  const plansIndex = normalized.lastIndexOf("plans");
-
-  if (plansIndex !== -1) {
-    return normalized.slice(plansIndex).join("/");
-  }
-
-  return planPath;
-}
-
-function printGoalCommand(planPath, workingDir) {
-  if (!planPath) {
-    throw new Error("goal requires a path to a plan");
-  }
-
-  const resolvedPlanPath = path.isAbsolute(planPath)
-    ? planPath
-    : path.resolve(workingDir, planPath);
-  const content = fs.readFileSync(resolvedPlanPath, "utf8");
-  const goalSection = extractGoalSection(content);
-  const planReference = formatPlanReference(resolvedPlanPath);
-
-  console.log(`/goal
-${escapeMultilineTerminalText(goalSection)}
-
-Use plan reference: ${escapeTerminalControls(planReference)}.`);
-}
-
-function compareDatesDescending(a, b) {
-  return b.localeCompare(a);
-}
-
-function compareOpenPlans(a, b, sort) {
-  if (sort === "time") {
-    return compareDatesDescending(a.createdAt, b.createdAt);
-  }
-
-  const priorityDifference =
-    PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority);
-  if (priorityDifference !== 0) {
-    return priorityDifference;
-  }
-
-  return compareDatesDescending(a.createdAt, b.createdAt);
-}
-
-function createReport(workingDir, openPlans, closedPlans) {
-  return {
-    workingDir,
-    summary: {
-      open: openPlans.length,
-      closed: closedPlans.length,
-    },
-    openPlans,
-    closedPlans,
-  };
-}
-
-function padRight(value, width) {
-  return String(value).padEnd(width, " ");
-}
-
-function escapeTerminalControls(value) {
-  return String(value).replace(
-    /[\u0000-\u001f\u007f-\u009f]/g,
-    (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`,
-  );
-}
-
-function escapeMultilineTerminalText(value) {
-  return String(value).replace(
-    /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
-    (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`,
-  );
-}
-
-function printTable(rows, columns) {
-  if (rows.length === 0) {
-    console.log("  (none)");
-    return;
-  }
-
-  const widths = columns.map((column) =>
-    Math.max(
-      column.label.length,
-      ...rows.map((row) => escapeTerminalControls(column.value(row)).length),
-    ),
-  );
-
-  console.log(
-    columns
-      .map((column, index) => padRight(column.label, widths[index]))
-      .join("  "),
-  );
-  console.log(widths.map((width) => "-".repeat(width)).join("  "));
-
-  for (const row of rows) {
-    console.log(
-      columns
-        .map((column, index) =>
-          padRight(escapeTerminalControls(column.value(row)), widths[index]),
-        )
-        .join("  "),
-    );
-  }
-}
-
-function printSummary(summary) {
-  console.log("Planrock Status");
-  console.log(`Open:   ${summary.open}`);
-  console.log(`Closed: ${summary.closed}`);
-}
-
-function formatAgentSessions(plan, fullAgentSession) {
-  if (plan.agentSessions.length === 0) {
-    return "-";
-  }
-
-  return plan.agentSessions
-    .map((session) => formatAgentSessionId(session, fullAgentSession))
-    .join(", ");
-}
-
-function openPlanColumns(fullAgentSession) {
-  return [
-    { label: "Priority", value: (plan) => plan.priority },
-    { label: "Title", value: (plan) => plan.title },
-    { label: "Created", value: (plan) => plan.createdAt },
-    {
-      label: "Done/Total",
-      value: (plan) => `${plan.checklistDone}/${plan.checklistTotal}`,
-    },
-    { label: "Percent", value: (plan) => `${plan.completionPercent}%` },
-    {
-      label: "Agent Sessions",
-      value: (plan) => formatAgentSessions(plan, fullAgentSession),
-    },
-  ];
-}
-
-function printOpenPlans(plans, fullAgentSession) {
-  console.log("Open Plans");
-  printTable(plans, openPlanColumns(fullAgentSession));
-}
-
-function printClosedPlans(plans) {
-  console.log("Closed Plans");
-  printTable(plans, [
-    { label: "Closed", value: (plan) => plan.closedAt },
-    { label: "Created", value: (plan) => plan.createdAt },
-    { label: "Title", value: (plan) => plan.title },
-  ]);
-}
-
-function printHumanReport(command, report, fullAgentSession) {
-  console.log(`Working dir: ${escapeTerminalControls(report.workingDir)}`);
-
-  if (command === "open") {
-    printOpenPlans(report.openPlans, fullAgentSession);
-    return;
-  }
-
-  if (command === "closed") {
-    printClosedPlans(report.closedPlans);
-    return;
-  }
-
-  printSummary(report.summary);
-  console.log("");
-  console.log(`Top Open Plans (top ${STATUS_LIMIT})`);
-  printTable(
-    report.openPlans.slice(0, STATUS_LIMIT),
-    openPlanColumns(fullAgentSession),
-  );
-  console.log("");
-  console.log(`Most Recent Closed Plans (top ${STATUS_LIMIT})`);
-  printTable(report.closedPlans.slice(0, STATUS_LIMIT), [
-    { label: "Closed", value: (plan) => plan.closedAt },
-    { label: "Created", value: (plan) => plan.createdAt },
-    { label: "Title", value: (plan) => plan.title },
-  ]);
-}
-
-function printJsonReport(command, report) {
-  if (command === "open") {
-    console.log(
-      JSON.stringify(
-        { workingDir: report.workingDir, openPlans: report.openPlans },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-
-  if (command === "closed") {
-    console.log(
-      JSON.stringify(
-        { workingDir: report.workingDir, closedPlans: report.closedPlans },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-
-  console.log(
-    JSON.stringify(
-      {
-        workingDir: report.workingDir,
-        summary: report.summary,
-        recentOpenPlans: report.openPlans.slice(0, STATUS_LIMIT),
-        recentClosedPlans: report.closedPlans.slice(0, STATUS_LIMIT),
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-function printHelp() {
-  console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
+function help() { console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
        planrock goal <path-to-plan>
+       planrock overview [--json] [--limit <1-1000>] [--cursor <opaque> (JSON only)]
+       planrock refresh [--json]
+       planrock project add <path> --name <unique-name> [--no-discovery] [--json]
+       planrock project remove|relink|list|validate|import ...
+       planrock dashboard start|open|status|stop [--port <number>] [--json]
 
-Commands:
-  status   Show summary plus the 10 highest-priority open plans and 10 most recent closed plans.
-  open     Show all open plans, priority first by default.
-  closed   Show all closed plans, newest closed first.
-  goal     Print a Codex /goal command from a plan's Goal section.
+Existing repository-local commands retain their prior behavior. Global Planrock data is stored only in ~/.agents/planrock.`); }
 
-Options:
-  --working-dir <path>  Working directory containing plans/.
-  --sort priority|time  Sort open plans by priority then created time, or by created time only.
-  --full-agent-session  Show complete agent_sessions values in human tables.
-  --json                Emit machine-readable JSON.
-  --version             Print the planrock version.
-`);
-}
-
-function main() {
-  let options;
-
+async function main() {
+  let parsed; try { parsed = parse(process.argv.slice(2)); } catch (error) { console.error(escapeTerminalControls(error.message)); process.exitCode = 1; return; }
+  const { positional, options } = parsed;
+  if (options.help) { help(); return; } if (options.version) { console.log(packageJson.version); return; }
+  const command = positional[0] || "status";
   try {
-    options = parseArgs(process.argv.slice(2));
-  } catch (error) {
-    console.error(escapeTerminalControls(error.message));
-    console.error("Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]");
-    console.error("       planrock goal <path-to-plan>");
-    process.exit(1);
-  }
-
-  if (options.command === "help") {
-    printHelp();
-    return;
-  }
-
-  if (options.command === "version") {
-    console.log(packageJson.version);
-    return;
-  }
-
-  if (options.command === "goal") {
-    try {
-      printGoalCommand(options.planPath, resolveWorkingDir(options.workingDir));
-    } catch (error) {
-      console.error(escapeTerminalControls(error.message));
-      process.exit(1);
+    if (["status", "open", "closed"].includes(command)) { if (positional.length > 1) throw new Error(`Unknown argument: ${positional[1]}`); runLocal(command, { workingDir: workingDir(options.workingDir), sort: options.sort, json: options.json, fullAgentSession: options.fullAgentSession }); return; }
+    if (command === "goal") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); runGoal(positional[1], workingDir(options.workingDir)); return; }
+    if (command === "overview") {
+      if (options.cursor && !options.json) throw new Error("--cursor requires --json");
+      const snapshot = options.cursor ? loadIndex({ refreshIfMissing: false }) : refreshIndex();
+      if (!snapshot) throw new Error("No persisted Planrock snapshot exists for this cursor; run overview without --cursor first");
+      if (options.json && (options.cursor || options.limit)) output({ overview: { schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) }, page: pageCollection(snapshot, "openPlans", { cursor: options.cursor, limit: options.limit }) }, true);
+      else if (options.json) { const nextUp = pageCollection(snapshot, "openPlans", { limit: 50 }); output({ schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100), nextUp: nextUp.items, omittedNextUp: Math.max(0, snapshot.openPlans.length - nextUp.items.length) }, true); }
+      else printOverview(snapshot, Math.max(1, Math.min(Number(options.limit) || 50, 1000)));
+      return;
     }
-
-    return;
-  }
-
-  const workingDir = resolveWorkingDir(options.workingDir);
-  const plansDir = path.join(workingDir, "plans");
-  let openPlans;
-  let closedPlans;
-
-  try {
-    ({ openPlans, closedPlans } = readPlans(plansDir, options.sort));
-  } catch (error) {
-    console.error(escapeTerminalControls(error.message));
-    process.exit(1);
-  }
-
-  const report = createReport(workingDir, openPlans, closedPlans);
-
-  if (options.json) {
-    printJsonReport(options.command, report);
-    return;
-  }
-
-  printHumanReport(options.command, report, options.fullAgentSession);
+    if (command === "refresh") { const snapshot = refreshIndex(); output(options.json ? { schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) } : `Refreshed ${snapshot.summary.projects} projects at ${snapshot.refreshedAt}${snapshot.incomplete ? " (incomplete)" : ""}`, options.json); return; }
+    if (command === "project") {
+      const action = positional[1];
+      if (action === "add") { if (!options.name || !positional[2]) throw new Error("project add requires <path> and --name"); output(withStorageLock("data", () => addProject(loadRegistry(), { name: options.name, root: positional[2], discovery: options.discovery })), options.json); return; }
+      if (action === "remove") { output(withStorageLock("data", () => removeProject(loadRegistry(), positional[2])), options.json); return; }
+      if (action === "relink") { if (!positional[2] || !positional[3]) throw new Error("project relink requires <id-or-name> <new-path>"); output(withStorageLock("data", () => relinkProject(loadRegistry(), positional[2], positional[3])), options.json); return; }
+      if (action === "list") { const registry = loadRegistry(); const limit = Math.max(1, Math.min(Number(options.limit) || 100, 1000)); const projects = registry.projects.slice(0, limit); output(options.json ? { schemaVersion: 1, projects, omitted: registry.projects.length - projects.length } : projects.map((item) => `${escapeTerminalControls(item.name)}\t${escapeTerminalControls(item.root)}\t${escapeTerminalControls(item.source)}`).join("\n") || "(none)", options.json); return; }
+      if (action === "validate") { const diagnostics = registryDiagnostics(loadRegistry()); output(options.json ? { valid: !diagnostics.some((item) => item.severity === "error"), diagnostics } : diagnostics.length ? diagnostics.map((item) => `${escapeTerminalControls(item.severity.toUpperCase())} ${escapeTerminalControls(item.code)}: ${escapeTerminalControls(item.message)}`).join("\n") : "Registry is valid.", options.json); return; }
+      if (action === "import" && positional[2] === "taskchef") { output(withStorageLock("data", () => importTaskChef(loadRegistry())), options.json); return; }
+      throw new Error("Unknown project command");
+    }
+    if (command === "dashboard") {
+      const action = positional[1] || "status";
+      if (action === "serve") { await serveDashboard(options.port || DEFAULT_PORT); return; }
+      if (action === "start") { output(await startDashboard(options.port || DEFAULT_PORT), options.json); return; }
+      if (action === "status") { output(await dashboardStatus(options.port), options.json); return; }
+      if (action === "open") { const owner = readOwner(); if (!owner) throw new Error("Planrock dashboard is not running"); if (options.port !== undefined && owner.port !== options.port) throw new Error(`Recorded dashboard uses port ${owner.port}; --port ${options.port} assertion failed`); output({ url: await mintUrl(owner), port: owner.port }, options.json); return; }
+      if (action === "stop") { output(await stopDashboard(options.port), options.json); return; }
+      throw new Error("Unknown dashboard command");
+    }
+    throw new Error(`Unknown argument: ${command}`);
+  } catch (error) { console.error(escapeTerminalControls(error.message)); process.exitCode = 1; }
 }
 
 main();

@@ -1,0 +1,28 @@
+:root { font-family: system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--mantine-color-gray-0); color: var(--mantine-color-text); }
+.app-shell { max-width: 1280px; margin: auto; padding: 24px; }
+header { display: grid; grid-template-columns: 1fr minmax(220px, 360px) auto; gap: 20px; align-items: center; }
+.meta, nav { display: flex; gap: 16px; align-items: center; margin: 18px 0; flex-wrap: wrap; }
+.summary { padding: 18px; display: flex; justify-content: space-between; }
+.plan-list { display: grid; gap: 8px; }
+.content-grid { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; }
+.project-sidebar { display: grid; align-content: start; gap: 6px; }
+.project-sidebar button { border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; padding: 10px; cursor: pointer; }
+.project-sidebar button.selected { background: #e7f1ff; color: #123b68; }
+.project-sidebar small { display: block; margin-top: 3px; }
+.plan-row { width: 100%; display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 14px; text-align: left; border: 1px solid var(--mantine-color-default-border); border-radius: var(--mantine-radius-md); background: var(--mantine-color-body); color: inherit; cursor: pointer; }
+.plan-row:focus-visible { outline: 3px solid #1473e6; outline-offset: 2px; }
+.plan-row small { display: block; margin-top: 4px; color: #5f6368; }
+.priority { font-weight: 700; }
+.priority.P0 { color: #8b0018; background: #fff0f2; }
+.priority.P1 { color: #7a2e00; background: #fff4e6; }
+.alert { padding: 12px; margin: 12px 0; border: 1px solid #b00020; border-radius: 8px; }
+[data-mantine-color-scheme="dark"] body { background: var(--mantine-color-dark-8); }
+[data-mantine-color-scheme="dark"] .plan-row { border-color: var(--mantine-color-dark-4); }
+[data-mantine-color-scheme="dark"] .plan-row small { color: var(--mantine-color-gray-5); }
+[data-mantine-color-scheme="dark"] .project-sidebar button.selected { background: var(--mantine-color-blue-9); color: var(--mantine-color-white); }
+[data-mantine-color-scheme="dark"] .priority.P0 { color: #fff; background: #8b0018; }
+[data-mantine-color-scheme="dark"] .priority.P1 { color: #fff; background: #7a2e00; }
+@media (max-width: 760px) { .app-shell { padding: 14px; } header { grid-template-columns: 1fr; } .content-grid { grid-template-columns: 1fr; } .project-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
