@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App, filterPlans, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
@@ -44,6 +44,7 @@ describe("dashboard navigation", () => {
   it("shows inline counts and filters open plans by derived workflow", async () => {
     const repositories = [
       { id: "active-repo", displayName: "Active repo", available: true, counts: { open: 2, closed: 1 } },
+      { id: "long-repo", displayName: "This project name is deliberately extremely long for dropdown alignment", available: true, counts: { open: 12, closed: 0 } },
       { id: "empty-repo", displayName: "Empty repo", available: true, counts: { open: 0, closed: 0 } },
     ];
     const plans = [
@@ -52,14 +53,14 @@ describe("dashboard navigation", () => {
       { id: "closed", projectId: "active-repo", projectName: "Active repo", title: "Closed early", state: "closed", priority: "P3", checklistDone: 1, checklistTotal: 4, agentSessions: [], relativeFile: "plans/closed.md", createdAt: "2026-08-20", closedAt: "2026-08-29" },
     ];
     const fetchMock = vi.fn(async (url) => {
-      if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 2, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
+      if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
     });
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<App />);
 
-    await screen.findByText("1 of 2 projects shown");
+    await screen.findByText("2 of 3 projects shown");
     expect(container.textContent).toContain("Open 2");
     expect(container.textContent).toContain("Closed 1");
     expect(container.textContent).toContain("Pending 1");
@@ -68,6 +69,20 @@ describe("dashboard navigation", () => {
     expect(container.textContent).toContain("Active plan");
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked();
 
+    const projectInput = container.querySelector('input[aria-label="Project"]');
+    fireEvent.click(projectInput);
+    await waitFor(() => expect(document.querySelectorAll('[role="option"]')).toHaveLength(2));
+    const longOption = [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("deliberately extremely long"));
+    expect(longOption).toHaveTextContent("This project name is deliberately extremely long for dropdown alignment12 open");
+    expect(longOption.querySelector(".project-option-name")).toHaveTextContent("This project name is deliberately extremely long for dropdown alignment");
+    expect(longOption.querySelector(".project-option-count")).toHaveTextContent("12 open");
+
+    fireEvent.keyDown(projectInput, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.keyDown(projectInput, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.keyDown(projectInput, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(projectInput).toHaveValue("This project name is deliberately extremely long for dropdown alignment"));
+    expect(projectInput.value).not.toContain("12 open");
+
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
-  }, 20_000);
+  }, 60_000);
 });

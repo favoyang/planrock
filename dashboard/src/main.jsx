@@ -141,7 +141,7 @@ export function App() {
     return result;
   }, [allPlans]);
 
-  const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenProjects || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: `${repository.displayName} · ${repository.counts.open} open` })), [repositories, onlyOpenProjects]);
+  const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenProjects || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories, onlyOpenProjects]);
   useEffect(() => { if (project && !projectOptions.some((option) => option.value === project)) setProject(null); }, [project, projectOptions]);
 
   const filtered = useMemo(() => filterPlans(allPlans, { lifecycle, workflow, project, query }), [allPlans, lifecycle, workflow, project, query]);
@@ -160,7 +160,7 @@ export function App() {
         <Paper className="filter-panel" withBorder>
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
             <TextInput label="Search" aria-label="Search plans" placeholder="Title, project, or path" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
-            <Select label="Project" aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" />
+            <Select label="Project" aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} />
             <div className="project-toggle"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /><Text size="xs" c="dimmed">{projectOptions.length} of {repositories.length} projects shown</Text></div>
           </SimpleGrid>
           <Divider my="md" />

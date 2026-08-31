@@ -6,3 +6,4 @@ globalThis.ResizeObserver ||= class ResizeObserver {
   unobserve() {}
   disconnect() {}
 };
+Element.prototype.scrollIntoView ||= () => {};

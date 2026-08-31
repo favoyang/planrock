@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
 const source = fs.readFileSync(path.join(root, "dashboard", "src", "main.jsx"), "utf8");
+const styles = fs.readFileSync(path.join(root, "dashboard", "src", "styles.css"), "utf8");
 const packageJson = require(path.join(root, "package.json"));
 const releaseConfig = require(path.join(root, ".releaserc.json"));
 const { DEFAULT_PORT, STORAGE_DIR } = require("../lib/constants");
@@ -16,6 +17,13 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(source, /aria-label="Plan lifecycle"/); assert.match(source, /aria-label="Open workflow"/);
   assert.match(source, /useId\(\)/); assert.match(source, /overview\.health\?\.state/);
   assert.match(source, /workflowState\(plan\)/);
+  assert.match(source, /openCount: repository\.counts\.open/);
+  assert.match(source, /className="project-option-name"/);
+  assert.match(source, /className="project-option-count"/);
+  assert.match(styles, /\.mantine-Select-options \.mantine-ScrollArea-content \{[^}]*min-width: 0;[^}]*width: 100%;/s);
+  assert.match(styles, /\.project-option \{[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*overflow: hidden;/s);
+  assert.match(styles, /\.project-option-name \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;/s);
+  assert.match(styles, /\.project-option-count \{[^}]*flex: 0 0 auto;[^}]*color: inherit;[^}]*white-space: nowrap;/s);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);
@@ -32,10 +40,9 @@ test("Node 18 runtime job installs the tarball as a local path", () => {
 });
 
 test("priority badges define readable light and dark scheme pairs", () => {
-  const css = fs.readFileSync(path.join(root, "dashboard", "src", "styles.css"), "utf8");
-  assert.match(css, /\.priority\.P0 \{ color: #9f1239; background: #fff1f2; \}/);
-  assert.match(css, /dark.*\.priority\.P0 \{ color: #fff; background: #9f1239; \}/);
-  assert.match(css, /dark.*\.priority\.P1 \{ color: #fff; background: #9a3412; \}/);
+  assert.match(styles, /\.priority\.P0 \{ color: #9f1239; background: #fff1f2; \}/);
+  assert.match(styles, /dark.*\.priority\.P0 \{ color: #fff; background: #9f1239; \}/);
+  assert.match(styles, /dark.*\.priority\.P1 \{ color: #fff; background: #9a3412; \}/);
 });
 
 test("dashboard presentation stays text-only and V1 contains no blocking surface", () => {

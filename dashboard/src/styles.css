@@ -64,6 +64,29 @@ body {
   gap: 7px;
 }
 
+.mantine-Select-options .mantine-ScrollArea-content {
+  min-width: 0;
+  width: 100%;
+}
+
+.project-option {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.project-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-option-count {
+  flex: 0 0 auto;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .state-grid {
   display: grid;
   grid-template-columns: minmax(230px, 0.8fr) minmax(320px, 1.2fr) auto;
