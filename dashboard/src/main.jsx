@@ -79,9 +79,8 @@ function PlanRow({ plan, onSelect }) {
   const date = plan.state === "closed" ? plan.closedAt || plan.createdAt : plan.createdAt;
   return <Paper className="plan-row" withBorder>
     <UnstyledButton className="plan-row-button" onClick={(event) => onSelect(plan, event.currentTarget)} aria-label={`Open ${plan.title}`}>
-      <div className="priority-cell"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div>
       <div className="plan-identity">
-        <Group gap={8} wrap="wrap"><Text component="h3" fw={650}>{plan.title}</Text><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group>
+        <Group className="plan-title-line" gap={8} wrap="nowrap"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Text component="h3" fw={650}>{plan.title}</Text><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group>
         <Text size="sm" c="dimmed">{plan.projectName} · {plan.relativeFile}</Text>
       </div>
       <div className="plan-progress">

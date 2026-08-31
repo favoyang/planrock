@@ -95,6 +95,9 @@ describe("dashboard navigation", () => {
     expect(container.textContent).toContain("Active plan");
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked();
     expect(screen.getByRole("heading", { name: "Plans - 2 matching" })).toHaveClass("section-kicker");
+    const pendingTitleLine = screen.getByRole("heading", { name: "Pending plan" }).closest(".plan-title-line");
+    expect(pendingTitleLine.querySelector(".priority")).toHaveTextContent("P2");
+    expect(pendingTitleLine.querySelector(".workflow")).toHaveTextContent("Pending");
 
     const projectInput = container.querySelector('input[aria-label="Project"]');
     fireEvent.click(projectInput);
