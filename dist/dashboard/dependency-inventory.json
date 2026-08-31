@@ -1,7 +1,11 @@
 {
   "schemaVersion": 1,
   "packages": [
+    "@floating-ui/core",
+    "@floating-ui/dom",
     "@floating-ui/react",
+    "@floating-ui/react-dom",
+    "@floating-ui/utils",
     "@mantine/core",
     "@mantine/hooks",
     "clsx",

@@ -3,7 +3,7 @@
 Planrock is a CLI, shared indexer, and set of agent skills for saved Markdown
 plans. Repository-local `plans/*.md` files stay authoritative. An optional
 cross-project registry and disposable index under `~/.agents/planrock` power a
-deterministic overview and an authenticated, on-demand localhost dashboard.
+deterministic overview and an unrestricted, on-demand dashboard.
 
 ## Skill Install
 
@@ -81,9 +81,11 @@ explicit-registration-only. It also performs a one-way, optional import from a
 valid fixed TaskChef schema-2 file without depending on TaskChef code or
 runtime state.
 
-The dashboard binds only to `127.0.0.1:4210` by default. `--port` overrides the
-port for that invocation and is not persisted. All plan-data and control APIs
-are authenticated; `start` returns a single-use browser bootstrap URL.
+The dashboard listens on all interfaces at port `4210` by default so multiple
+local or LAN viewers can open it without authentication. `--port` overrides
+the port for that invocation and is not persisted. `start` and `open` return a
+plain `http://127.0.0.1:<port>/` URL for local use; replace the host with the
+machine's LAN address for another device.
 
 Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal`
 command from the readable Goal section. The output also includes a stable
