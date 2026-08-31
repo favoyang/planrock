@@ -68,6 +68,7 @@ describe("dashboard navigation", () => {
     expect(container.textContent).toContain("Pending plan");
     expect(container.textContent).toContain("Active plan");
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked();
+    expect(screen.getByRole("heading", { name: "Plans - 2 matching" })).toHaveClass("section-kicker");
 
     const projectInput = container.querySelector('input[aria-label="Project"]');
     fireEvent.click(projectInput);

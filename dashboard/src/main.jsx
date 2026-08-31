@@ -82,7 +82,7 @@ function PlanRow({ plan, onSelect }) {
 function PlanList({ plans, onSelect }) {
   const headingId = useId();
   return <section aria-labelledby={headingId}>
-    <Group justify="space-between" align="end" mb="sm"><div><Text className="section-kicker">Plans</Text><Title id={headingId} order={2}>{plans.length} matching</Title></div></Group>
+    <Text id={headingId} className="section-kicker" component="h2" mb="sm">Plans - {plans.length} matching</Text>
     <Stack gap="sm">{plans.map((plan) => <PlanRow key={plan.id} plan={plan} onSelect={onSelect} />)}{plans.length === 0 && <Paper className="empty-state" withBorder><Title order={3}>No matching plans</Title><Text c="dimmed">Adjust the state, project, or search filters.</Text></Paper>}</Stack>
   </section>;
 }
