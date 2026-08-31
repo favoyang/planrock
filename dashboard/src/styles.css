@@ -41,7 +41,7 @@ body {
 }
 
 .health-button { text-transform: capitalize; }
-.health-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.health-dot { width: 7px; height: 7px; margin-inline-end: 0.45rem; border-radius: 50%; background: currentColor; }
 
 .alert {
   padding: var(--mantine-spacing-md);

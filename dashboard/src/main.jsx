@@ -38,6 +38,20 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+export async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand?.("copy") === true;
+  textarea.remove();
+  if (!copied) throw new Error("Copy is unavailable in this browser");
+}
+
 export function workflowState(plan) {
   if (plan.state === "closed") return "closed";
   return plan.checklistDone > 0 || (plan.agentSessions?.length || 0) > 0 ? "active" : "pending";
@@ -90,6 +104,11 @@ function PlanList({ plans, onSelect }) {
 function PlanDrawer({ plan, onClose }) {
   const percent = completion(plan);
   const workflow = workflowState(plan);
+  const [copyStatus, setCopyStatus] = useState("");
+  async function copy(label, value) {
+    try { await copyText(value); setCopyStatus(`${label} copied`); }
+    catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
+  }
   return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
     <Stack gap="lg">
       <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title order={2} mt="sm">{plan.title}</Title><Text c="dimmed">{plan.projectName}</Text></div>
@@ -99,7 +118,8 @@ function PlanDrawer({ plan, onClose }) {
       <div><Text className="detail-label">Plan path</Text><Text className="path-text">{plan.absolutePath}</Text></div>
       {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => <Text key={session} size="sm" className="path-text">{session}</Text>)}</Stack></div>}
       {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <a key={link} href={link} target="_blank" rel="noreferrer">{link}</a>)}</Stack></div>}
-      <Group grow><Button variant="default" onClick={() => navigator.clipboard.writeText(`/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => navigator.clipboard.writeText(plan.absolutePath)}>Copy path</Button></Group>
+      <Group grow><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => copy("Path", plan.absolutePath)}>Copy path</Button></Group>
+      <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>
     </Stack>
   </Drawer>;
 }
@@ -150,11 +170,12 @@ export function App() {
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
   function closePlan() { setSelected(null); restoreOverlayFocus(); }
   function closeHealth() { setHealthOpen(false); restoreOverlayFocus(); }
-  const healthState = overview?.health?.state || (overview?.incomplete ? "degraded" : "healthy");
+  const healthState = overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
+  const healthColor = healthState === "healthy" ? "teal" : healthState === "loading" ? "gray" : "orange";
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell"><Container size="xl" py={{ base: "lg", sm: 36 }}>
-      <header className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">Saved plans</Text></Group><Title order={1}>Dashboard</Title></div><Group gap="sm"><Button className={`health-button ${healthState}`} variant="subtle" color={healthState === "healthy" ? "teal" : "orange"} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" />{healthState}</Button><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button></Group></header>
+      <header className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">Saved plans</Text></Group><Title order={1}>Dashboard</Title></div><Group gap="sm"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button></Group></header>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>

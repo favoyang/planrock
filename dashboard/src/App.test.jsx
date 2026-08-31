@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, filterPlans, workflowState } from "./main";
+import { App, copyText, filterPlans, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -26,6 +26,24 @@ describe("dashboard workflow", () => {
   });
 });
 
+describe("dashboard copy fallback", () => {
+  it("copies through the document fallback when the Clipboard API is unavailable", async () => {
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, "execCommand");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
+    try {
+      await copyText("plan path");
+      expect(execCommand).toHaveBeenCalledWith("copy");
+      expect(document.querySelector("textarea")).toBeNull();
+    } finally {
+      if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor); else delete navigator.clipboard;
+      if (execCommandDescriptor) Object.defineProperty(document, "execCommand", execCommandDescriptor); else delete document.execCommand;
+    }
+  });
+});
+
 describe("dashboard pagination", () => {
   it("loads every bounded page instead of silently stopping at 200 items", async () => {
     const calls = [];
@@ -41,6 +59,14 @@ describe("dashboard pagination", () => {
 });
 
 describe("dashboard navigation", () => {
+  it("does not report healthy before overview data is available", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "loading" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "healthy" })).toBeNull();
+  });
+
   it("shows inline counts and filters open plans by derived workflow", async () => {
     const repositories = [
       { id: "active-repo", displayName: "Active repo", available: true, counts: { open: 2, closed: 1 } },
