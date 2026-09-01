@@ -79,6 +79,7 @@ test("overview uses strict state taxonomy, compatibility defaults, and determini
   run(home, ["project", "add", repo, "--name", "Repo"]); const overview = json(home, ["overview"]);
   assert.equal(overview.summary.open, 2); assert.equal(overview.summary.invalid, 1); assert.deepEqual(overview.nextUp.map((item) => item.title), ["Urgent", "Normal"]);
   assert.deepEqual(overview.nextUp[0].agentSessions, ["codex:legacy"]);
+  assert.ok(Number.isFinite(Date.parse(overview.nextUp[0].updatedAt)));
   assert.ok(overview.diagnostics.some((item) => item.code === "PLAN_OPEN_CHECKLIST_COMPLETE"));
   assert.ok(overview.diagnostics.some((item) => item.code === "PLAN_STATE_INVALID"));
 });

@@ -13,7 +13,6 @@ import {
   Progress,
   SegmentedControl,
   Select,
-  SimpleGrid,
   Stack,
   Switch,
   Text,
@@ -63,10 +62,95 @@ export function filterPlans(plans, { lifecycle, workflow, project, query }) {
   return plans.filter((plan) => plan.state === lifecycle).filter((plan) => lifecycle === "closed" || workflow === "all" || workflowState(plan) === workflow).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
 }
 
-function formatDate(value) {
-  if (!value) return "No date";
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+function parseTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+export function formatRelativeDate(value, now = new Date()) {
+  const date = parseTimestamp(value);
+  if (!date) return value || "No date";
+  const seconds = (date.valueOf() - now.valueOf()) / 1000;
+  const units = [["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3_600], ["minute", 60], ["second", 1]];
+  const [, divisor] = units.find(([, size]) => Math.abs(seconds) >= size) || units.at(-1);
+  const unit = units.find(([, size]) => size === divisor)[0];
+  return new Intl.RelativeTimeFormat(undefined, { numeric: "always" }).format(Math.round(seconds / divisor), unit);
+}
+
+function formatFullDate(value) {
+  const date = parseTimestamp(value);
+  if (!date) return value || "No date";
+  return new Intl.DateTimeFormat(undefined, /^\d{4}-\d{2}-\d{2}$/.test(value) ? { dateStyle: "long" } : { dateStyle: "medium", timeStyle: "medium" }).format(date);
+}
+
+function RelativeTime({ label, value, className = "" }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!value) return null;
+  const full = formatFullDate(value);
+  return <UnstyledButton className={`relative-time ${className}`.trim()} data-expanded={expanded || undefined} title={full} aria-label={`${label}: ${expanded ? "show relative time" : "show full timestamp"}`} onClick={() => setExpanded((current) => !current)}><Text className="time-label">{label}</Text><Text className="time-value" size="sm" fw={550}><time dateTime={value}>{expanded ? full : formatRelativeDate(value)}</time></Text></UnstyledButton>;
+}
+
+function webHref(value) {
+  try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : null; }
+  catch { return null; }
+}
+
+function planSourceHref(plan) {
+  return `/api/plan?id=${encodeURIComponent(plan.id)}`;
+}
+
+function normalizePlanPath(value) { return String(value).replace(/\\/g, "/"); }
+
+export function resolvePlanPath(value, basePath) {
+  const target = normalizePlanPath(value).split(/[?#]/, 1)[0]; const base = normalizePlanPath(basePath);
+  const targetDrive = target.match(/^[a-z]:\//i)?.[0].slice(0, 2); const baseDrive = base.match(/^[a-z]:\//i)?.[0].slice(0, 2);
+  const absolute = target.startsWith("/") || Boolean(targetDrive); const root = targetDrive ? `${targetDrive}/` : absolute ? "/" : baseDrive ? `${baseDrive}/` : "/";
+  const stripRoot = (pathValue, drive) => pathValue.slice(drive ? 3 : pathValue.startsWith("/") ? 1 : 0);
+  const parts = absolute ? [] : stripRoot(base, baseDrive).split("/").slice(0, -1);
+  for (const part of stripRoot(target, targetDrive).split("/")) { if (!part || part === ".") continue; if (part === "..") parts.pop(); else parts.push(part); }
+  return `${root}${parts.join("/")}`;
+}
+
+function markdownTarget(value, basePath, plansByPath) {
+  const remote = webHref(value);
+  if (remote) return { href: remote, plan: null };
+  if (!basePath || /^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
+  const target = plansByPath.get(resolvePlanPath(value, basePath));
+  return target ? { href: planSourceHref(target), plan: target } : null;
+}
+
+function renderInlineMarkdown(value, context, keyPrefix) {
+  const nodes = []; let text = ""; let cursor = 0;
+  const flush = () => { if (text) { nodes.push(text); text = ""; } };
+  while (cursor < value.length) {
+    if (value[cursor] === "\\" && cursor + 1 < value.length) { text += value[cursor + 1]; cursor += 2; continue; }
+    if (value[cursor] === "`") { const end = value.indexOf("`", cursor + 1); if (end !== -1) { flush(); nodes.push(<code key={`${keyPrefix}-code-${cursor}`}>{value.slice(cursor + 1, end)}</code>); cursor = end + 1; continue; } }
+    if (value.startsWith("**", cursor)) { const end = value.indexOf("**", cursor + 2); if (end !== -1) { flush(); nodes.push(<strong key={`${keyPrefix}-strong-${cursor}`}>{renderInlineMarkdown(value.slice(cursor + 2, end), context, `${keyPrefix}-strong-${cursor}`)}</strong>); cursor = end + 2; continue; } }
+    if (value[cursor] === "*") { const end = value.indexOf("*", cursor + 1); if (end !== -1) { flush(); nodes.push(<em key={`${keyPrefix}-em-${cursor}`}>{renderInlineMarkdown(value.slice(cursor + 1, end), context, `${keyPrefix}-em-${cursor}`)}</em>); cursor = end + 1; continue; } }
+    if (value[cursor] === "[") { const labelEnd = value.indexOf("](", cursor + 1); const targetEnd = labelEnd === -1 ? -1 : value.indexOf(")", labelEnd + 2); if (targetEnd !== -1) { flush(); const label = renderInlineMarkdown(value.slice(cursor + 1, labelEnd), context, `${keyPrefix}-link-${cursor}`); const target = markdownTarget(value.slice(labelEnd + 2, targetEnd), context.basePath, context.plansByPath); nodes.push(target?.plan ? <button key={`${keyPrefix}-link-${cursor}`} type="button" className="markdown-link" onClick={(event) => context.onOpenPlan(event, target.plan)}>{label}</button> : target ? <a key={`${keyPrefix}-link-${cursor}`} href={target.href} target="_blank" rel="noreferrer">{label}</a> : <React.Fragment key={`${keyPrefix}-link-${cursor}`}>{label}</React.Fragment>); cursor = targetEnd + 1; continue; } }
+    text += value[cursor]; cursor += 1;
+  }
+  flush(); return nodes;
+}
+
+function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan }) {
+  const lines = String(children || "").split("\n"); const blocks = []; const context = { basePath, plansByPath, onOpenPlan }; let index = 0;
+  const blockStart = (line) => !line.trim() || /^\s*(?:[-*+] |\d+\. |#{1,4} |```)/.test(line);
+  while (index < lines.length) {
+    if (!lines[index].trim()) { index += 1; continue; }
+    if (lines[index].trim().startsWith("```")) { const language = lines[index].trim().slice(3); const code = []; index += 1; while (index < lines.length && !lines[index].trim().startsWith("```")) { code.push(lines[index]); index += 1; } index += 1; blocks.push(<pre key={`code-${index}`}><code data-language={language || undefined}>{code.join("\n")}</code></pre>); continue; }
+    const unordered = lines[index].match(/^\s*[-*+]\s+(.+)/); const ordered = lines[index].match(/^\s*\d+\.\s+(.+)/);
+    if (unordered || ordered) { const items = []; const pattern = unordered ? /^\s*[-*+]\s+(.+)/ : /^\s*\d+\.\s+(.+)/; while (index < lines.length) { const match = lines[index].match(pattern); if (!match) break; items.push(<li key={`${index}`}>{renderInlineMarkdown(match[1], context, `item-${index}`)}</li>); index += 1; } const List = unordered ? "ul" : "ol"; blocks.push(<List key={`list-${index}`}>{items}</List>); continue; }
+    const heading = lines[index].match(/^(#{1,4})\s+(.+)/); if (heading) { const Heading = `h${Math.min(heading[1].length + 2, 6)}`; blocks.push(<Heading key={`heading-${index}`}>{renderInlineMarkdown(heading[2], context, `heading-${index}`)}</Heading>); index += 1; continue; }
+    const paragraph = [lines[index].trim()]; index += 1; while (index < lines.length && !blockStart(lines[index])) { paragraph.push(lines[index].trim()); index += 1; } blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(" "), context, `paragraph-${index}`)}</p>);
+  }
+  return <div className={className}>{blocks}</div>;
+}
+
+function sessionHref(session) {
+  const [agent, ...parts] = String(session).split(":");
+  return agent === "codex" && parts.length ? `codex://threads/${encodeURIComponent(parts.join(":"))}` : null;
 }
 
 function completion(plan) {
@@ -77,7 +161,7 @@ function completion(plan) {
 function PlanRow({ plan, onSelect }) {
   const workflow = workflowState(plan);
   const percent = completion(plan);
-  const date = plan.state === "closed" ? plan.closedAt || plan.createdAt : plan.createdAt;
+  const timestamp = workflow === "closed" ? { label: "Closed", value: plan.closedAt || plan.updatedAt || plan.createdAt } : workflow === "active" ? { label: "Active", value: plan.updatedAt || plan.createdAt } : { label: "Pending", value: plan.createdAt || plan.updatedAt };
   return <Paper className="plan-row" withBorder>
     <UnstyledButton className="plan-row-button" onClick={(event) => onSelect(plan, event.currentTarget)} aria-label={`Open ${plan.title}`}>
       <div className="plan-identity">
@@ -88,8 +172,9 @@ function PlanRow({ plan, onSelect }) {
         <Group justify="space-between" gap={8}><Text size="xs" fw={600}>Progress</Text><Text size="xs" c="dimmed">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group>
         <Progress value={percent} size="sm" radius="xl" aria-label={`${percent}% complete`} />
       </div>
-      <div className="plan-date"><Text size="xs" tt="uppercase" c="dimmed">{plan.state === "closed" ? "Closed" : "Created"}</Text><Text size="sm" fw={550}>{formatDate(date)}</Text></div>
+      <span className="plan-date-space" aria-hidden="true" />
     </UnstyledButton>
+    <RelativeTime className="plan-date" label={timestamp.label} value={timestamp.value} />
   </Paper>;
 }
 
@@ -101,22 +186,35 @@ function PlanList({ plans, onSelect }) {
   </section>;
 }
 
-function PlanDrawer({ plan, onClose }) {
+function PlanDrawer({ plan, plans, onClose }) {
   const percent = completion(plan);
   const workflow = workflowState(plan);
+  const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath), item])), [plans]);
   const [copyStatus, setCopyStatus] = useState("");
+  const [sourcePlan, setSourcePlan] = useState(null);
+  const [sourceText, setSourceText] = useState("");
+  const [sourceError, setSourceError] = useState("");
+  const [sourceLoading, setSourceLoading] = useState(false);
   async function copy(label, value) {
     try { await copyText(value); setCopyStatus(`${label} copied`); }
     catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
+  }
+  async function openPlanSource(event, target) {
+    event.preventDefault(); setSourcePlan(target); setSourceText(""); setSourceError(""); setSourceLoading(true);
+    try { const response = await fetch(planSourceHref(target)); if (!response.ok) throw new Error(`Plan source returned ${response.status}`); setSourceText(await response.text()); }
+    catch (reason) { setSourceError(reason.message); }
+    finally { setSourceLoading(false); }
   }
   return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
     <Stack gap="md">
       <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title className="detail-title" order={2} mt="xs">{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
       <div><Group justify="space-between"><Text size="sm" fw={600}>Progress</Text><Text size="sm">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group><Progress value={percent} mt="xs" /></div>
       <Divider />
-      <div><Text className="detail-label">Goal</Text><Text className="goal-excerpt" size="sm">{plan.goalExcerpt || "No Goal excerpt."}</Text></div>
-      <div><Text className="detail-label">Plan path</Text><Text className="path-text" size="sm">{plan.absolutePath}</Text></div>
-      {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => <Text key={session} size="sm" className="path-text">{session}</Text>)}</Stack></div>}
+      <Group className="detail-times" align="flex-start"><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
+      <div><Text className="detail-label">Goal</Text><MarkdownText className="goal-excerpt" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{plan.goalExcerpt || "No goal excerpt."}</MarkdownText></div>
+      <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link" onClick={(event) => openPlanSource(event, plan)} title="Show plan source">{plan.absolutePath}</UnstyledButton></div>
+      {sourcePlan && <Paper className="plan-source" withBorder p="sm" aria-live="polite"><Group justify="space-between" gap="sm" wrap="nowrap"><Text size="sm" fw={650} truncate>{sourcePlan.relativeFile}</Text><Button size="compact-xs" variant="subtle" onClick={() => setSourcePlan(null)}>Hide source</Button></Group>{sourceLoading && <Text size="sm" c="dimmed">Loading source…</Text>}{sourceError && <Text role="alert" size="sm" c="red">{sourceError}</Text>}{sourceText && <pre><code>{sourceText}</code></pre>}</Paper>}
+      {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="sm" className="path-text detail-link" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="sm" className="path-text">{session}</Text>; })}</Stack></div>}
       {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
       <Group grow><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => copy("Path", plan.absolutePath)}>Copy path</Button></Group>
       <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>
@@ -181,16 +279,17 @@ export function App() {
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-            <TextInput label="Search" aria-label="Search plans" placeholder="Title, project, or path" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
-            <div className="project-filter-line"><Select label="Project" aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /><div className="project-toggle"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /><Text size="xs" c="dimmed">{projectOptions.length} of {repositories.length} projects shown</Text></div></div>
-          </SimpleGrid>
+          <div className="filter-top-grid">
+            <div className="filter-field project-field"><Group className="filter-heading" justify="space-between" gap="sm"><Text className="filter-label">Project</Text><Text className="filter-count" size="xs" c="dimmed">{projectOptions.length} of {repositories.length}</Text></Group><Select aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
+            <div className="filter-field search-field"><div className="filter-heading"><Text className="filter-label">Search</Text></div><TextInput aria-label="Search plans" placeholder="Title, project, or path" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></div>
+            <div className="project-toggle-row"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /></div>
+          </div>
           <Divider my="md" />
-          <div className="state-grid"><div><Text className="filter-label">State</Text><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><Text className="filter-label">Open workflow</Text><div className="segmented-scroll"><SegmentedControl aria-label="Open workflow" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
+          <div className="state-grid"><div><div className="filter-heading"><Text className="filter-label">State</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><div className="filter-heading"><Text className="filter-label">Progress</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan progress" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
         </Paper>
         <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelected(plan); }} />
       </Stack>}
-      {selected && <PlanDrawer plan={selected} onClose={closePlan} />}
+      {selected && <PlanDrawer plan={selected} plans={allPlans} onClose={closePlan} />}
       {healthOpen && overview && <HealthDrawer overview={overview} displayState={healthState} onClose={closeHealth} />}
       </Container>
     </div>

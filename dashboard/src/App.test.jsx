@@ -1,12 +1,17 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, copyText, filterPlans, workflowState } from "./main";
+import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("dashboard workflow", () => {
+  it("resolves relative Markdown plan links across native path formats", () => {
+    expect(resolvePlanPath("pending.md", "/tmp/plans/active.md")).toBe("/tmp/plans/pending.md");
+    expect(resolvePlanPath("pending.md", "C:\\repo\\plans\\active.md")).toBe("C:/repo/plans/pending.md");
+  });
+
   it("derives pending, active, and closed from authored state and progress signals", () => {
     expect(workflowState({ state: "open", checklistDone: 0, agentSessions: [] })).toBe("pending");
     expect(workflowState({ state: "open", checklistDone: 1, agentSessions: [] })).toBe("active");
@@ -23,6 +28,11 @@ describe("dashboard workflow", () => {
     expect(filterPlans(plans, { lifecycle: "open", workflow: "pending", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending"]);
     expect(filterPlans(plans, { lifecycle: "open", workflow: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Active"]);
     expect(filterPlans(plans, { lifecycle: "closed", workflow: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Closed"]);
+  });
+
+  it("formats plan activity as relative time", () => {
+    expect(formatRelativeDate("2026-09-01T10:00:00.000Z", new Date("2026-09-01T12:00:00.000Z"))).toBe("2 hours ago");
+    expect(formatRelativeDate("2026-08-30", new Date("2026-09-01T00:00:00"))).toBe("2 days ago");
   });
 });
 
@@ -76,12 +86,13 @@ describe("dashboard navigation", () => {
       { id: "empty-repo", displayName: "Empty repo", available: true, counts: { open: 0, closed: 0 } },
     ];
     const plans = [
-      { id: "pending", projectId: "active-repo", projectName: "Active repo", title: "Pending plan", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 2, agentSessions: [], relativeFile: "plans/pending.md", createdAt: "2026-08-30" },
-      { id: "active", projectId: "active-repo", projectName: "Active repo", title: "Active plan", state: "open", priority: "P1", checklistDone: 1, checklistTotal: 2, agentSessions: [], relativeFile: "plans/active.md", createdAt: "2026-08-30" },
-      { id: "closed", projectId: "active-repo", projectName: "Active repo", title: "Closed early", state: "closed", priority: "P3", checklistDone: 1, checklistTotal: 4, agentSessions: [], relativeFile: "plans/closed.md", createdAt: "2026-08-20", closedAt: "2026-08-29" },
+      { id: "pending", projectId: "active-repo", projectName: "Active repo", title: "Pending plan", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 2, agentSessions: [], relativeFile: "plans/pending.md", absolutePath: "/tmp/plans/pending.md", createdAt: "2026-08-30", updatedAt: "2026-08-30T06:00:00.000Z" },
+      { id: "active", projectId: "active-repo", projectName: "Active repo", title: "Active plan", state: "open", priority: "P1", checklistDone: 1, checklistTotal: 2, agentSessions: ["codex:019e2f18-930f-7052-999f-e3b083d9373f"], relativeFile: "plans/active.md", absolutePath: "/tmp/plans/active.md", createdAt: "2026-08-30", updatedAt: "2026-08-31T06:00:00.000Z", goalExcerpt: "Read **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Reject [bad](javascript:bad)" },
+      { id: "closed", projectId: "active-repo", projectName: "Active repo", title: "Closed early", state: "closed", priority: "P3", checklistDone: 1, checklistTotal: 4, agentSessions: [], relativeFile: "plans/closed.md", absolutePath: "/tmp/plans/closed.md", createdAt: "2026-08-20", updatedAt: "2026-08-28T06:00:00.000Z", closedAt: "2026-08-29" },
     ];
     const fetchMock = vi.fn(async (url) => {
       if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
+      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nSource body.\n" };
       if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
@@ -89,7 +100,7 @@ describe("dashboard navigation", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<App />);
 
-    await screen.findByText("2 of 3 projects shown");
+    await screen.findByText("2 of 3");
     expect(container).toHaveTextContent("v1.2.4");
     expect(container).toHaveTextContent("Last refreshed");
     expect(container.textContent).toContain("Open 2");
@@ -103,6 +114,30 @@ describe("dashboard navigation", () => {
     const pendingTitleLine = screen.getByRole("heading", { name: "Pending plan" }).closest(".plan-title-line");
     expect(pendingTitleLine.querySelector(".priority")).toHaveTextContent("P2");
     expect(pendingTitleLine.querySelector(".workflow")).toHaveTextContent("Pending");
+
+    const activeTimestamp = screen.getByRole("button", { name: "Active: show full timestamp" });
+    expect(activeTimestamp).toHaveTextContent("Active");
+    fireEvent.click(activeTimestamp);
+    expect(activeTimestamp).toHaveAccessibleName("Active: show relative time");
+    expect(activeTimestamp).toHaveTextContent("Aug 31, 2026");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Active plan" }));
+    const docsLink = await screen.findByRole("link", { name: "collector docs" });
+    expect(docsLink).toHaveAttribute("href", "https://example.com/docs");
+    expect(docsLink.closest("strong")).toHaveTextContent("the collector docs");
+    expect(screen.getByRole("button", { name: "pending.md" }).querySelector("code")).toBeInTheDocument();
+    expect(screen.getByText("Keep *literal*")).toBeInTheDocument();
+    expect(screen.getByText("Reject bad")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
+    const pathButton = screen.getByRole("button", { name: "/tmp/plans/active.md" });
+    fireEvent.click(pathButton);
+    expect(await screen.findByText(/Source body/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide source" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "codex:019e2f18-930f-7052-999f-e3b083d9373f" })).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f");
+    const detailUpdated = screen.getByRole("button", { name: "Updated: show full timestamp" });
+    fireEvent.click(detailUpdated);
+    expect(detailUpdated).toHaveAccessibleName("Updated: show relative time");
+    fireEvent.click(document.querySelector(".mantine-Drawer-close"));
 
     const projectInput = container.querySelector('input[aria-label="Project"]');
     fireEvent.click(projectInput);

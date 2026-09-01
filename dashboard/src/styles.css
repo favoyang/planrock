@@ -33,15 +33,24 @@ body {
 
 .refresh-control { display: grid; justify-items: end; gap: 4px; text-align: right; }
 
-.brand-mark,
-.section-kicker,
-.filter-label,
-.detail-label {
+.brand-mark {
   color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-3));
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+}
+
+.section-kicker,
+.filter-label,
+.detail-label,
+.time-label {
+  color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-3));
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  text-transform: none;
 }
 
 .health-button { text-transform: capitalize; }
@@ -65,20 +74,20 @@ body {
   box-shadow: 0 10px 30px light-dark(rgba(40, 50, 45, 0.05), rgba(0, 0, 0, 0.12));
 }
 
-.project-filter-line {
+.filter-top-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  align-items: end;
+  grid-template-areas: "project search" "toggle .";
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--mantine-spacing-md);
 }
 
-.project-toggle {
-  display: flex;
-  min-height: 58px;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 7px;
-}
+.filter-field { min-width: 0; }
+.project-field { grid-area: project; }
+.search-field { grid-area: search; }
+.project-toggle-row { grid-area: toggle; }
+.filter-heading { min-height: 1.15rem; margin-bottom: 7px; }
+.filter-label { margin: 0; }
+.filter-count { font-variant-numeric: tabular-nums; }
 
 .mantine-Select-options .mantine-ScrollArea-content {
   min-width: 0;
@@ -110,9 +119,10 @@ body {
   gap: var(--mantine-spacing-md);
 }
 
-.filter-label { margin-bottom: 7px; }
+.state-grid .mantine-SegmentedControl-label { padding-block: 6px; font-size: var(--mantine-font-size-xs); }
 
 .plan-row {
+  position: relative;
   overflow: hidden;
   background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-8));
   transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
@@ -147,10 +157,24 @@ body {
 .plan-title-line .workflow { flex: 0 0 auto; }
 .plan-identity > p { overflow: hidden; margin-top: 4px; text-overflow: ellipsis; white-space: nowrap; }
 .plan-progress { display: grid; gap: 7px; }
-.plan-date { justify-self: end; text-align: right; }
+.plan-date {
+  position: absolute;
+  top: 17px;
+  right: 18px;
+  z-index: 1;
+  padding: 2px 0 3px 8px;
+  border-radius: var(--mantine-radius-sm);
+  text-align: right;
+}
+.plan-date[data-expanded] { position: static; display: block; width: 100%; padding: 0 18px 17px; text-align: right; }
+.plan-date:hover .time-value,
+.relative-time:focus-visible .time-value { color: var(--mantine-primary-color-filled); text-decoration: underline; }
+.relative-time:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
+.time-value { white-space: nowrap; }
 
 .priority,
 .workflow { font-weight: 800; letter-spacing: 0.025em; }
+.workflow { text-transform: none; }
 .priority.P0 { color: #9f1239; background: #fff1f2; }
 .priority.P1 { color: #9a3412; background: #fff7ed; }
 .priority.P2 { color: #1e3a8a; background: #eff6ff; }
@@ -168,25 +192,44 @@ body {
 
 .empty-state { padding: 56px 24px; text-align: center; }
 .detail-title { font-size: 1.125rem; font-weight: 650; line-height: 1.4; }
-.goal-excerpt { line-height: 1.6; white-space: pre-wrap; }
+.goal-excerpt { font-size: var(--mantine-font-size-sm); line-height: 1.6; }
+.goal-excerpt p { margin: 0 0 0.75em; }
+.goal-excerpt p:last-child { margin-bottom: 0; }
+.goal-excerpt ul,
+.goal-excerpt ol { margin: 0.35em 0 0.75em; padding-left: 1.35rem; }
+.goal-excerpt pre { overflow-x: auto; padding: var(--mantine-spacing-sm); border-radius: var(--mantine-radius-sm); background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7)); }
+.goal-excerpt a,
+.goal-excerpt .markdown-link { display: inline; margin: 0; padding: 0; border: 0; background: transparent; color: var(--mantine-primary-color-filled); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.goal-excerpt code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.92em; }
 .path-text { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.detail-link { color: var(--mantine-primary-color-filled); text-decoration: underline; text-underline-offset: 2px; }
+.detail-times { gap: var(--mantine-spacing-xl); }
+.detail-times .relative-time { text-align: left; }
+.plan-source pre { max-height: 20rem; overflow: auto; margin: var(--mantine-spacing-xs) 0 0; padding: var(--mantine-spacing-sm); border-radius: var(--mantine-radius-sm); background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7)); font-size: 0.75rem; line-height: 1.5; white-space: pre-wrap; }
+
+@media (min-width: 901px) {
+  .plan-row:has(.plan-date[data-expanded]) .plan-row-button { grid-template-columns: minmax(260px, 1fr) minmax(180px, 250px); }
+  .plan-row:has(.plan-date[data-expanded]) .plan-date-space { display: none; }
+}
 
 @media (max-width: 900px) {
   .state-grid { grid-template-columns: 1fr; }
   .plan-row-button { grid-template-columns: minmax(0, 1fr) 120px; }
   .plan-progress { grid-column: 1 / -1; }
-  .plan-date { grid-column: 2; grid-row: 1; }
+  .plan-date-space { grid-column: 2; grid-row: 1; }
 }
 
 @media (max-width: 600px) {
   .dashboard-header { align-items: stretch; flex-direction: column; gap: var(--mantine-spacing-sm); }
   .header-actions { justify-content: space-between; }
   .filter-panel { padding: var(--mantine-spacing-md); }
-  .project-filter-line { grid-template-columns: 1fr; gap: var(--mantine-spacing-xs); }
+  .filter-top-grid { grid-template-areas: "project" "toggle" "search"; grid-template-columns: 1fr; gap: var(--mantine-spacing-sm); }
   .segmented-scroll { overflow-x: auto; padding-bottom: 2px; }
   .segmented-scroll > * { min-width: max-content; }
   .plan-row-button { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 15px; }
-  .plan-date { grid-column: 1; grid-row: auto; justify-self: start; text-align: left; }
+  .plan-date-space { display: none; }
+  .plan-identity { padding-right: 108px; }
+  .plan-row:has(.plan-date[data-expanded]) .plan-identity { padding-right: 0; }
   .plan-progress { grid-column: 1 / -1; }
 }
 

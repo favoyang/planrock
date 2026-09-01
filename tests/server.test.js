@@ -29,6 +29,11 @@ test("unrestricted dashboard supports multiple viewers, cross-origin requests, r
     const baseUrl = `http://127.0.0.1:${port}`;
     const health = await fetch(`${baseUrl}/api/health`); assert.equal(health.status, 200); const healthBody = await health.json(); assert.equal(healthBody.instanceId, owner.instanceId); assert.equal(healthBody.controlProtocolVersion, CONTROL_PROTOCOL_VERSION); assert.equal(health.headers.get("access-control-allow-origin"), "*");
     const overview = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "viewer.example", Origin: "http://viewer.example" } }); assert.equal(overview.status, 200); assert.equal((await overview.json()).summary.open, 1);
+    const plans = await fetch(`${baseUrl}/api/collection?name=openPlans`); const planId = (await plans.json()).items[0].id;
+    const planSource = await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`); assert.equal(planSource.status, 200); assert.match(planSource.headers.get("content-type"), /^text\/plain/); assert.match(await planSource.text(), /Unsafe <img src=x>/);
+    assert.equal((await fetch(`${baseUrl}/api/plan?id=missing`)).status, 404);
+    const originalPlans = path.join(repo, "plans-original"); const outsidePlans = path.join(base, "outside-plans"); fs.mkdirSync(outsidePlans); fs.writeFileSync(path.join(outsidePlans, "one.md"), "escaped source"); fs.renameSync(path.join(repo, "plans"), originalPlans); fs.symlinkSync(outsidePlans, path.join(repo, "plans"), "dir");
+    assert.equal((await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`)).status, 404); fs.unlinkSync(path.join(repo, "plans")); fs.renameSync(originalPlans, path.join(repo, "plans"));
     const secondViewer = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "another-viewer.example", Origin: "http://another-viewer.example" } }); assert.equal(secondViewer.status, 200);
     const preflight = await fetch(`${baseUrl}/api/refresh`, { method: "OPTIONS", headers: { Origin: "http://viewer.example" } }); assert.equal(preflight.status, 204); assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
     assert.equal((await fetch(`${baseUrl}/api/refresh`, { method: "POST", headers: { Host: "viewer.example", Origin: "http://viewer.example", "Content-Type": "application/json" }, body: "{}" })).status, 200);
