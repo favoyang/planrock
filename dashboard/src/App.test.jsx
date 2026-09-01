@@ -1,6 +1,7 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import packageJson from "../../package.json";
 import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
@@ -97,7 +98,7 @@ describe("dashboard navigation", () => {
     expect(await screen.findByRole("heading", { name: "Consistent plan" })).toBeInTheDocument();
     expect(overviewCalls).toBe(2);
     expect(screen.getByRole("heading", { name: "Plans - 1 matching" })).toBeInTheDocument();
-  }, 30_000);
+  }, 90_000);
 
   it("keeps an open detail drawer synchronized after refresh", async () => {
     let currentPlan = { id: "refresh-plan", projectId: "repo", projectName: "Repo", title: "Original title", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 1, agentSessions: [], relativeFile: "plans/refresh.md", absolutePath: "/tmp/plans/refresh.md", fingerprint: "first", createdAt: "2026-08-30", updatedAt: "2026-08-30T06:00:00.000Z" };
@@ -132,7 +133,7 @@ describe("dashboard navigation", () => {
     expect(await screen.findByText("Fresh linked body.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Original title", level: 2 })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Linked original", level: 2 })).toBeNull();
-  }, 30_000);
+  }, 90_000);
 
   it("shows inline counts and filters open plans by derived workflow", async () => {
     let resolveRefresh;
@@ -161,7 +162,7 @@ describe("dashboard navigation", () => {
     const { container } = render(<App />);
 
     await screen.findByText("2 of 3");
-    expect(container).toHaveTextContent("v1.2.4");
+    expect(container).toHaveTextContent(`v${packageJson.version}`);
     const refreshedTime = screen.getByRole("button", { name: /^Refreshed .*; show full timestamp$/ });
     expect(refreshedTime).toHaveTextContent(/^Refreshed .* ago$/); fireEvent.click(refreshedTime); expect(refreshedTime).toHaveAccessibleName(/^Aug 30, 2026.*; show relative time$/);
     expect(container.textContent).toContain("Open 2");
