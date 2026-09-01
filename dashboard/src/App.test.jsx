@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, workflowState } from "./main";
+import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -10,6 +10,11 @@ describe("dashboard workflow", () => {
   it("resolves relative Markdown plan links across native path formats", () => {
     expect(resolvePlanPath("pending.md", "/tmp/plans/active.md")).toBe("/tmp/plans/pending.md");
     expect(resolvePlanPath("pending.md", "C:\\repo\\plans\\active.md")).toBe("C:/repo/plans/pending.md");
+  });
+
+  it("removes frontmatter before rendering a full plan", () => {
+    expect(stripPlanFrontmatter("---\ntitle: Test\n---\n\n## Goal\n\nBody")).toBe("## Goal\n\nBody");
+    expect(stripPlanFrontmatter("## Goal\n\nBody")).toBe("## Goal\n\nBody");
   });
 
   it("derives pending, active, and closed from authored state and progress signals", () => {
@@ -92,7 +97,7 @@ describe("dashboard navigation", () => {
     ];
     const fetchMock = vi.fn(async (url) => {
       if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
-      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nSource body.\n" };
+      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Reject [bad](javascript:bad)\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n" };
       if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
@@ -130,10 +135,15 @@ describe("dashboard navigation", () => {
     expect(screen.getByText("Reject bad")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
     const pathButton = screen.getByRole("button", { name: "/tmp/plans/active.md" });
+    expect(document.querySelector(".plan-content").compareDocumentPosition(pathButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const planTasks = document.querySelectorAll(".plan-content .task-list-item input");
+    expect(planTasks).toHaveLength(2); expect(planTasks[0]).toBeChecked(); expect(planTasks[1]).not.toBeChecked();
+    expect(pathButton).toHaveClass("detail-meta-value");
     fireEvent.click(pathButton);
     expect(await screen.findByText(/Source body/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide source" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "codex:019e2f18-930f-7052-999f-e3b083d9373f" })).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f");
+    const sessionLink = screen.getByRole("link", { name: "codex:019e2f18-930f-7052-999f-e3b083d9373f" });
+    expect(sessionLink).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f"); expect(sessionLink).toHaveClass("detail-meta-value");
     const detailUpdated = screen.getByRole("button", { name: "Updated: show full timestamp" });
     fireEvent.click(detailUpdated);
     expect(detailUpdated).toHaveAccessibleName("Updated: show relative time");

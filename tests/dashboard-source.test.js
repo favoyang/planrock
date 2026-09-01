@@ -30,12 +30,14 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.health-button:not\(\.healthy, \.loading\) \.health-dot \{ background: var\(--mantine-color-orange-4\); \}/);
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
-  assert.match(source, /<MarkdownText className="goal-excerpt" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanSource\}>/);
+  assert.match(source, /<MarkdownText className="plan-content" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanSource\}>/);
   assert.match(source, /function renderInlineMarkdown/);
   assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
   assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search" "toggle \.";[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
   assert.match(source, /className="filter-count"[^>]*>\{projectOptions\.length\} of \{repositories\.length\}/);
-  assert.match(styles, /\.state-grid \.mantine-SegmentedControl-label \{[^}]*font-size: var\(--mantine-font-size-xs\);/s);
+  assert.equal((source.match(/<SegmentedControl[^>]*size="xs"/g) || []).length, 2);
+  assert.match(styles, /\.state-grid \.mantine-SegmentedControl-label \{ font-size: var\(--mantine-font-size-xs\); \}/);
+  assert.doesNotMatch(styles, /\.state-grid \.mantine-SegmentedControl-label \{[^}]*padding/s);
   assert.match(styles, /\.plan-date\[data-expanded\] \{ position: static; display: block; width: 100%;/);
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-row-button \{ grid-template-columns: minmax\(260px, 1fr\) minmax\(180px, 250px\); \}/);
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-identity \{ padding-right: 0; \}/);
@@ -47,7 +49,9 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.dashboard-navbar \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /codex:\/\/threads\/\$\{encodeURIComponent/);
-  assert.match(source, /className="path-text detail-link" onClick=\{\(event\) => openPlanSource\(event, plan\)\}/);
+  assert.match(source, /className="path-text detail-link detail-meta-value" onClick=\{\(event\) => openPlanSource\(event, plan\)\}/);
+  assert.match(source, /<PlanProgress plan=\{plan\} className="detail-progress" \/>/);
+  assert.match(styles, /\.detail-meta-value \{ font-size: var\(--mantine-font-size-xs\);/);
   assert.match(source, /formatRelativeDate\(value\)/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);

@@ -112,6 +112,13 @@ export function resolvePlanPath(value, basePath) {
   return `${root}${parts.join("/")}`;
 }
 
+export function stripPlanFrontmatter(content) {
+  const normalized = String(content || "").replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) return normalized;
+  const delimiter = /\n---(?:\n|$)/.exec(normalized.slice(4));
+  return delimiter ? normalized.slice(delimiter.index + 8).replace(/^\n+/, "") : normalized;
+}
+
 function markdownTarget(value, basePath, plansByPath) {
   const remote = webHref(value);
   if (remote) return { href: remote, plan: null };
@@ -141,7 +148,7 @@ function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan }
     if (!lines[index].trim()) { index += 1; continue; }
     if (lines[index].trim().startsWith("```")) { const language = lines[index].trim().slice(3); const code = []; index += 1; while (index < lines.length && !lines[index].trim().startsWith("```")) { code.push(lines[index]); index += 1; } index += 1; blocks.push(<pre key={`code-${index}`}><code data-language={language || undefined}>{code.join("\n")}</code></pre>); continue; }
     const unordered = lines[index].match(/^\s*[-*+]\s+(.+)/); const ordered = lines[index].match(/^\s*\d+\.\s+(.+)/);
-    if (unordered || ordered) { const items = []; const pattern = unordered ? /^\s*[-*+]\s+(.+)/ : /^\s*\d+\.\s+(.+)/; while (index < lines.length) { const match = lines[index].match(pattern); if (!match) break; items.push(<li key={`${index}`}>{renderInlineMarkdown(match[1], context, `item-${index}`)}</li>); index += 1; } const List = unordered ? "ul" : "ol"; blocks.push(<List key={`list-${index}`}>{items}</List>); continue; }
+    if (unordered || ordered) { const items = []; const pattern = unordered ? /^\s*[-*+]\s+(.+)/ : /^\s*\d+\.\s+(.+)/; while (index < lines.length) { const match = lines[index].match(pattern); if (!match) break; const task = unordered ? match[1].match(/^\[([ xX])\]\s+(.+)/) : null; items.push(<li className={task ? "task-list-item" : undefined} key={`${index}`}>{task && <input type="checkbox" checked={task[1].toLocaleLowerCase() === "x"} disabled />}{renderInlineMarkdown(task ? task[2] : match[1], context, `item-${index}`)}</li>); index += 1; } const List = unordered ? "ul" : "ol"; blocks.push(<List className={items.some((item) => item.props.className) ? "task-list" : undefined} key={`list-${index}`}>{items}</List>); continue; }
     const heading = lines[index].match(/^(#{1,4})\s+(.+)/); if (heading) { const Heading = `h${Math.min(heading[1].length + 2, 6)}`; blocks.push(<Heading key={`heading-${index}`}>{renderInlineMarkdown(heading[2], context, `heading-${index}`)}</Heading>); index += 1; continue; }
     const paragraph = [lines[index].trim()]; index += 1; while (index < lines.length && !blockStart(lines[index])) { paragraph.push(lines[index].trim()); index += 1; } blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(" "), context, `paragraph-${index}`)}</p>);
   }
@@ -158,9 +165,16 @@ function completion(plan) {
   return Math.round((plan.checklistDone / plan.checklistTotal) * 100);
 }
 
+function PlanProgress({ plan, className = "" }) {
+  const percent = completion(plan);
+  return <div className={`plan-progress ${className}`.trim()}>
+    <Group justify="space-between" gap={8}><Text size="xs" fw={600}>Progress</Text><Text size="xs" c="dimmed">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group>
+    <Progress value={percent} size="sm" radius="xl" aria-label={`${percent}% complete`} />
+  </div>;
+}
+
 function PlanRow({ plan, onSelect }) {
   const workflow = workflowState(plan);
-  const percent = completion(plan);
   const timestamp = workflow === "closed" ? { label: "Closed", value: plan.closedAt || plan.updatedAt || plan.createdAt } : workflow === "active" ? { label: "Active", value: plan.updatedAt || plan.createdAt } : { label: "Pending", value: plan.createdAt || plan.updatedAt };
   return <Paper className="plan-row" withBorder>
     <UnstyledButton className="plan-row-button" onClick={(event) => onSelect(plan, event.currentTarget)} aria-label={`Open ${plan.title}`}>
@@ -168,10 +182,7 @@ function PlanRow({ plan, onSelect }) {
         <Group className="plan-title-line" gap={8} wrap="nowrap"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Text component="h3" fw={650}>{plan.title}</Text><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group>
         <Text size="sm" c="dimmed">{plan.projectName} · {plan.relativeFile}</Text>
       </div>
-      <div className="plan-progress">
-        <Group justify="space-between" gap={8}><Text size="xs" fw={600}>Progress</Text><Text size="xs" c="dimmed">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group>
-        <Progress value={percent} size="sm" radius="xl" aria-label={`${percent}% complete`} />
-      </div>
+      <PlanProgress plan={plan} />
       <span className="plan-date-space" aria-hidden="true" />
     </UnstyledButton>
     <RelativeTime className="plan-date" label={timestamp.label} value={timestamp.value} />
@@ -187,14 +198,21 @@ function PlanList({ plans, onSelect }) {
 }
 
 function PlanDrawer({ plan, plans, onClose }) {
-  const percent = completion(plan);
   const workflow = workflowState(plan);
   const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath), item])), [plans]);
   const [copyStatus, setCopyStatus] = useState("");
+  const [planContent, setPlanContent] = useState("");
+  const [planContentError, setPlanContentError] = useState("");
+  const [planContentLoading, setPlanContentLoading] = useState(true);
   const [sourcePlan, setSourcePlan] = useState(null);
   const [sourceText, setSourceText] = useState("");
   const [sourceError, setSourceError] = useState("");
   const [sourceLoading, setSourceLoading] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController(); setPlanContent(""); setPlanContentError(""); setPlanContentLoading(true);
+    fetch(planSourceHref(plan), { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error(`Plan source returned ${response.status}`); return response.text(); }).then((text) => setPlanContent(stripPlanFrontmatter(text))).catch((reason) => { if (reason.name !== "AbortError") setPlanContentError(reason.message); }).finally(() => { if (!controller.signal.aborted) setPlanContentLoading(false); });
+    return () => controller.abort();
+  }, [plan.id]);
   async function copy(label, value) {
     try { await copyText(value); setCopyStatus(`${label} copied`); }
     catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
@@ -208,13 +226,13 @@ function PlanDrawer({ plan, plans, onClose }) {
   return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
     <Stack gap="md">
       <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title className="detail-title" order={2} mt="xs">{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
-      <div><Group justify="space-between"><Text size="sm" fw={600}>Progress</Text><Text size="sm">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group><Progress value={percent} mt="xs" /></div>
+      <PlanProgress plan={plan} className="detail-progress" />
       <Divider />
       <Group className="detail-times" align="flex-start"><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
-      <div><Text className="detail-label">Goal</Text><MarkdownText className="goal-excerpt" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{plan.goalExcerpt || "No goal excerpt."}</MarkdownText></div>
-      <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link" onClick={(event) => openPlanSource(event, plan)} title="Show plan source">{plan.absolutePath}</UnstyledButton></div>
+      <section><Text className="detail-label">Plan</Text>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{planContent}</MarkdownText>}</section>
+      <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link detail-meta-value" onClick={(event) => openPlanSource(event, plan)} title="Show raw plan source">{plan.absolutePath}</UnstyledButton></div>
       {sourcePlan && <Paper className="plan-source" withBorder p="sm" aria-live="polite"><Group justify="space-between" gap="sm" wrap="nowrap"><Text size="sm" fw={650} truncate>{sourcePlan.relativeFile}</Text><Button size="compact-xs" variant="subtle" onClick={() => setSourcePlan(null)}>Hide source</Button></Group>{sourceLoading && <Text size="sm" c="dimmed">Loading source…</Text>}{sourceError && <Text role="alert" size="sm" c="red">{sourceError}</Text>}{sourceText && <pre><code>{sourceText}</code></pre>}</Paper>}
-      {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="sm" className="path-text detail-link" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="sm" className="path-text">{session}</Text>; })}</Stack></div>}
+      {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="xs" className="path-text detail-link detail-meta-value" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>; })}</Stack></div>}
       {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
       <Group grow><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => copy("Path", plan.absolutePath)}>Copy path</Button></Group>
       <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>
@@ -285,7 +303,7 @@ export function App() {
             <div className="project-toggle-row"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /></div>
           </div>
           <Divider my="md" />
-          <div className="state-grid"><div><div className="filter-heading"><Text className="filter-label">State</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><div className="filter-heading"><Text className="filter-label">Progress</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan progress" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
+            <div className="state-grid"><div><div className="filter-heading"><Text className="filter-label">State</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" size="xs" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><div className="filter-heading"><Text className="filter-label">Progress</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan progress" size="xs" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
         </Paper>
         <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelected(plan); }} />
       </Stack>}
