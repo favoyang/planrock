@@ -31,10 +31,29 @@ body {
   padding-bottom: var(--mantine-spacing-md);
 }
 
-.refresh-control { display: grid; width: 9rem; justify-items: end; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
-.refresh-indicator { width: 14px; height: 14px; border: 2px solid transparent; border-radius: 50%; }
-.refresh-button.refreshing .refresh-indicator { border-color: var(--mantine-color-teal-6); border-right-color: transparent; animation: refresh-spin 700ms linear infinite; }
-@keyframes refresh-spin { to { transform: rotate(360deg); } }
+.refresh-control { display: grid; justify-items: end; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.refresh-time { white-space: nowrap; }
+.refresh-time:hover { text-decoration: underline; text-underline-offset: 2px; }
+.refresh-time:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
+.refresh-button { position: relative; isolation: isolate; }
+.refresh-button:disabled { opacity: 1; color: var(--mantine-color-text); cursor: wait; }
+.refresh-button::after {
+  position: absolute;
+  z-index: 2;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--refresh-angle), transparent 0 68%, var(--mantine-color-teal-5) 80%, var(--mantine-color-teal-8) 84%, transparent 96%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.refresh-button.refreshing::after { opacity: 1; animation: refresh-border-sweep 800ms linear infinite; }
+@property --refresh-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes refresh-border-sweep { to { --refresh-angle: 360deg; } }
 
 .brand-mark {
   color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-3));
@@ -156,8 +175,7 @@ body {
 .plan-identity { min-width: 0; }
 .plan-title-line { min-width: 0; }
 .plan-title-line h3 { flex: 1 1 auto; min-width: 0; overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
-.plan-title-line .priority,
-.plan-title-line .workflow { flex: 0 0 auto; }
+.plan-title-line .priority { flex: 0 0 auto; }
 .plan-identity > p { overflow: hidden; margin-top: 4px; text-overflow: ellipsis; white-space: nowrap; }
 .plan-progress { display: grid; gap: 7px; }
 .plan-date {
@@ -175,17 +193,12 @@ body {
 .relative-time:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
 .time-value { white-space: nowrap; }
 
-.priority,
-.workflow { font-weight: 800; letter-spacing: 0.025em; }
-.workflow { text-transform: none; }
+.priority { font-weight: 800; letter-spacing: 0.025em; }
 .priority.P0 { color: #9f1239; background: #fff1f2; }
 .priority.P1 { color: #9a3412; background: #fff7ed; }
 .priority.P2 { color: #1e3a8a; background: #eff6ff; }
 .priority.P3 { color: #3f6212; background: #f7fee7; }
 .priority.P4 { color: #475569; background: #f1f5f9; }
-.workflow.pending { color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-2)); background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5)); }
-.workflow.active { color: light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-1)); background: light-dark(var(--mantine-color-teal-0), rgba(18, 184, 134, 0.18)); }
-.workflow.closed { color: light-dark(var(--mantine-color-violet-9), var(--mantine-color-violet-1)); background: light-dark(var(--mantine-color-violet-0), rgba(121, 80, 242, 0.18)); }
 
 [data-mantine-color-scheme="dark"] .priority.P0 { color: #fff; background: #9f1239; }
 [data-mantine-color-scheme="dark"] .priority.P1 { color: #fff; background: #9a3412; }
@@ -213,6 +226,13 @@ body {
 .plan-content .task-list-item > ul,
 .plan-content .task-list-item > ol { grid-column: 2; }
 .plan-content pre { overflow-x: auto; padding: var(--mantine-spacing-sm); border-radius: var(--mantine-radius-sm); background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7)); }
+.markdown-table-scroll { max-width: 100%; overflow-x: auto; margin: 0.5em 0 1em; border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-5)); border-radius: var(--mantine-radius-sm); }
+.markdown-table-scroll:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
+.plan-content table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.plan-content th,
+.plan-content td { min-width: 7rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-5)); vertical-align: top; }
+.plan-content th { background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7)); font-size: var(--mantine-font-size-xs); font-weight: 700; white-space: nowrap; }
+.plan-content tbody tr:last-child td { border-bottom: 0; }
 .plan-content a,
 .plan-content .markdown-link { display: inline; margin: 0; padding: 0; border: 0; background: transparent; color: var(--mantine-primary-color-filled); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .plan-content code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.92em; }
@@ -222,14 +242,13 @@ body {
 .detail-progress { width: 100%; }
 .detail-stats { gap: var(--mantine-spacing-xl); }
 .detail-stats .relative-time,
-.detail-stat { text-align: left; }
-.detail-stat { display: grid; align-content: start; justify-items: start; gap: 4px; }
-.detail-state-value { font-size: var(--mantine-font-size-sm); }
+.detail-stat { display: grid; grid-template-rows: 1.0125rem auto; align-content: start; justify-items: start; gap: 4px; text-align: left; }
+.detail-state-value { font-size: var(--mantine-font-size-sm); font-weight: 550; letter-spacing: normal; line-height: var(--mantine-line-height-sm); text-align: left; }
 .detail-actions { flex-wrap: wrap; }
 .chat-menu-trigger { padding-inline: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .refresh-button.refreshing .refresh-indicator { animation: none; }
+  .refresh-button.refreshing::after { background: var(--mantine-color-teal-6); animation: none; }
 }
 
 @media (min-width: 901px) {
