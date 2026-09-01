@@ -175,8 +175,9 @@ export function App() {
   const healthColor = healthState === "healthy" ? "teal" : healthState === "loading" ? "gray" : "orange";
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
-    <div className="page-shell"><Container size="xl" py={{ base: "lg", sm: 36 }}>
-      <header className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></header>
+    <div className="page-shell">
+      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></div></Container></header>
+      <Container size="xl" pt="xs" pb={{ base: "lg", sm: 36 }}>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
@@ -191,7 +192,8 @@ export function App() {
       </Stack>}
       {selected && <PlanDrawer plan={selected} onClose={closePlan} />}
       {healthOpen && overview && <HealthDrawer overview={overview} displayState={healthState} onClose={closeHealth} />}
-    </Container></div>
+      </Container>
+    </div>
   </MantineProvider>;
 }
 
