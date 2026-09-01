@@ -87,6 +87,10 @@ the port for that invocation and is not persisted. `start` and `open` return a
 plain `http://127.0.0.1:<port>/` URL for local use; replace the host with the
 machine's LAN address for another device.
 
+Unauthenticated dashboards use lifecycle control protocol 2. Current Planrock
+can hand off a legacy authenticated protocol-1 dashboard, but older protocol-1
+CLIs cannot manage a protocol-2 listener and must not modify its owner record.
+
 Use `planrock goal <path-to-plan>` to print a copy-pasteable Codex `/goal`
 command from the readable Goal section. The output also includes a stable
 `plans/...` reference for the original plan file.

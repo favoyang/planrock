@@ -7,6 +7,7 @@ const path = require("node:path");
 const { execFileSync, spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 const packageJson = require("../package.json");
+const { CONTROL_PROTOCOL_VERSION } = require("../lib/constants");
 
 const enabled = process.env.PLANROCK_SERVER_TESTS === "1";
 const root = path.resolve(__dirname, "..");
@@ -22,11 +23,11 @@ test("unrestricted dashboard supports multiple viewers, cross-origin requests, r
   run(home, ["project", "add", repo, "--name", "Repo"]); const port = randomPort();
   try {
     const started = JSON.parse(run(home, ["dashboard", "start", "--port", String(port), "--json"]).stdout); assert.equal(started.action, "started"); assert.equal(started.url, `http://127.0.0.1:${port}/`); assert.equal(JSON.stringify(started).includes("capability"), false);
-    const ownerPath = path.join(home, ".agents", "planrock", "dashboard-owner.json"); assert.equal(fs.statSync(ownerPath).mode & 0o777, 0o600); const owner = JSON.parse(fs.readFileSync(ownerPath, "utf8"));
+    const ownerPath = path.join(home, ".agents", "planrock", "dashboard-owner.json"); assert.equal(fs.statSync(ownerPath).mode & 0o777, 0o600); const owner = JSON.parse(fs.readFileSync(ownerPath, "utf8")); assert.equal(owner.controlProtocolVersion, CONTROL_PROTOCOL_VERSION); assert.equal(CONTROL_PROTOCOL_VERSION, 2);
     const reused = JSON.parse(run(home, ["dashboard", "start", "--port", String(port), "--json"]).stdout); assert.equal(reused.action, "reused");
     const conflict = run(home, ["dashboard", "start", "--port", String(port + 1)], 1); assert.match(conflict.stderr, new RegExp(`already running on port ${port}`));
     const baseUrl = `http://127.0.0.1:${port}`;
-    const health = await fetch(`${baseUrl}/api/health`); assert.equal(health.status, 200); assert.equal((await health.json()).instanceId, owner.instanceId); assert.equal(health.headers.get("access-control-allow-origin"), "*");
+    const health = await fetch(`${baseUrl}/api/health`); assert.equal(health.status, 200); const healthBody = await health.json(); assert.equal(healthBody.instanceId, owner.instanceId); assert.equal(healthBody.controlProtocolVersion, CONTROL_PROTOCOL_VERSION); assert.equal(health.headers.get("access-control-allow-origin"), "*");
     const overview = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "viewer.example", Origin: "http://viewer.example" } }); assert.equal(overview.status, 200); assert.equal((await overview.json()).summary.open, 1);
     const secondViewer = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "another-viewer.example", Origin: "http://another-viewer.example" } }); assert.equal(secondViewer.status, 200);
     const preflight = await fetch(`${baseUrl}/api/refresh`, { method: "OPTIONS", headers: { Origin: "http://viewer.example" } }); assert.equal(preflight.status, 204); assert.equal(preflight.headers.get("access-control-allow-origin"), "*");

@@ -41,7 +41,12 @@ body {
 }
 
 .health-button { text-transform: capitalize; }
-.health-dot { width: 7px; height: 7px; margin-inline-end: 0.45rem; border-radius: 50%; background: currentColor; }
+.health-dot { width: 7px; height: 7px; margin-inline-end: 0.45rem; border-radius: 50%; }
+.health-button.healthy .health-dot { background: var(--mantine-color-teal-7); }
+.health-button.loading .health-dot { background: var(--mantine-color-gray-5); }
+.health-button:not(.healthy, .loading) .health-dot { background: var(--mantine-color-orange-7); }
+[data-mantine-color-scheme="dark"] .health-button.healthy .health-dot { background: var(--mantine-color-teal-4); }
+[data-mantine-color-scheme="dark"] .health-button:not(.healthy, .loading) .health-dot { background: var(--mantine-color-orange-4); }
 
 .alert {
   padding: var(--mantine-spacing-md);

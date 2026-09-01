@@ -25,6 +25,9 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.project-option-name \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;/s);
   assert.match(styles, /\.project-option-count \{[^}]*flex: 0 0 auto;[^}]*color: inherit;[^}]*white-space: nowrap;/s);
   assert.match(styles, /\.health-dot \{[^}]*margin-inline-end: 0\.45rem;/s);
+  assert.match(styles, /\.health-button\.healthy \.health-dot \{ background: var\(--mantine-color-teal-7\); \}/);
+  assert.match(styles, /dark.*\.health-button\.healthy \.health-dot \{ background: var\(--mantine-color-teal-4\); \}/);
+  assert.match(styles, /dark.*\.health-button:not\(\.healthy, \.loading\) \.health-dot \{ background: var\(--mantine-color-orange-4\); \}/);
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
