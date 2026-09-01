@@ -31,6 +31,12 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
   assert.match(source, /className="goal-excerpt" size="sm"/);
+  assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
+  assert.match(styles, /\.project-filter-line \{[^}]*grid-template-columns: minmax\(220px, 1fr\) auto;/s);
+  assert.match(source, /className="refresh-control"/); assert.doesNotMatch(source, /refresh-meta/);
+  assert.match(source, /const healthState = refreshing \? "loading" : refreshFailed \? "stale"/);
+  assert.match(styles, /\.dashboard-header \{[^}]*border-bottom: 1px solid var\(--mantine-color-gray-3\);/s);
+  assert.match(styles, /dark.*\.dashboard-header \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);

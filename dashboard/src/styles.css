@@ -24,10 +24,14 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--mantine-spacing-lg);
-  padding-bottom: 26px;
-  margin-bottom: var(--mantine-spacing-md);
-  border-bottom: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-5));
+  padding-bottom: var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--mantine-color-gray-3);
 }
+
+[data-mantine-color-scheme="dark"] .dashboard-header { border-bottom-color: var(--mantine-color-dark-5); }
+
+.refresh-control { display: grid; justify-items: end; gap: 4px; text-align: right; }
 
 .brand-mark,
 .section-kicker,
@@ -59,6 +63,13 @@ body {
   padding: var(--mantine-spacing-lg);
   background: light-dark(rgba(255, 255, 255, 0.94), rgba(26, 27, 30, 0.94));
   box-shadow: 0 10px 30px light-dark(rgba(40, 50, 45, 0.05), rgba(0, 0, 0, 0.12));
+}
+
+.project-filter-line {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: var(--mantine-spacing-md);
 }
 
 .project-toggle {
@@ -94,13 +105,12 @@ body {
 
 .state-grid {
   display: grid;
-  grid-template-columns: minmax(230px, 0.8fr) minmax(320px, 1.2fr) auto;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(320px, 1.2fr);
   align-items: end;
   gap: var(--mantine-spacing-md);
 }
 
 .filter-label { margin-bottom: 7px; }
-.refresh-meta { min-width: 175px; padding-bottom: 3px; text-align: right; }
 
 .plan-row {
   overflow: hidden;
@@ -163,16 +173,16 @@ body {
 
 @media (max-width: 900px) {
   .state-grid { grid-template-columns: 1fr; }
-  .refresh-meta { min-width: 0; text-align: left; }
   .plan-row-button { grid-template-columns: minmax(0, 1fr) 120px; }
   .plan-progress { grid-column: 1 / -1; }
   .plan-date { grid-column: 2; grid-row: 1; }
 }
 
 @media (max-width: 600px) {
-  .dashboard-header { align-items: flex-start; }
-  .dashboard-header > .mantine-Group-root { justify-content: flex-end; }
+  .dashboard-header { align-items: stretch; flex-direction: column; gap: var(--mantine-spacing-sm); }
+  .header-actions { justify-content: space-between; }
   .filter-panel { padding: var(--mantine-spacing-md); }
+  .project-filter-line { grid-template-columns: 1fr; gap: var(--mantine-spacing-xs); }
   .segmented-scroll { overflow-x: auto; padding-bottom: 2px; }
   .segmented-scroll > * { min-width: max-content; }
   .plan-row-button { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 15px; }

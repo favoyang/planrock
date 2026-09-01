@@ -68,6 +68,8 @@ describe("dashboard navigation", () => {
   });
 
   it("shows inline counts and filters open plans by derived workflow", async () => {
+    let resolveRefresh;
+    let rejectRefresh;
     const repositories = [
       { id: "active-repo", displayName: "Active repo", available: true, counts: { open: 2, closed: 1 } },
       { id: "long-repo", displayName: "This project name is deliberately extremely long for dropdown alignment", available: true, counts: { open: 12, closed: 0 } },
@@ -79,6 +81,7 @@ describe("dashboard navigation", () => {
       { id: "closed", projectId: "active-repo", projectName: "Active repo", title: "Closed early", state: "closed", priority: "P3", checklistDone: 1, checklistTotal: 4, agentSessions: [], relativeFile: "plans/closed.md", createdAt: "2026-08-20", closedAt: "2026-08-29" },
     ];
     const fetchMock = vi.fn(async (url) => {
+      if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
       if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
@@ -87,6 +90,8 @@ describe("dashboard navigation", () => {
     const { container } = render(<App />);
 
     await screen.findByText("2 of 3 projects shown");
+    expect(container).toHaveTextContent("v1.2.4");
+    expect(container).toHaveTextContent("Last refreshed");
     expect(container.textContent).toContain("Open 2");
     expect(container.textContent).toContain("Closed 1");
     expect(container.textContent).toContain("Pending 1");
@@ -112,6 +117,24 @@ describe("dashboard navigation", () => {
     fireEvent.keyDown(projectInput, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(projectInput).toHaveValue("This project name is deliberately extremely long for dropdown alignment"));
     expect(projectInput.value).not.toContain("12 open");
+
+    const healthButton = container.querySelector(".health-button");
+    const refreshButton = [...container.querySelectorAll("button")].find((button) => button.textContent.includes("Refresh"));
+    expect(healthButton).toHaveTextContent("healthy");
+    fireEvent.click(refreshButton);
+    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); });
+    fireEvent.click(healthButton);
+    expect(await screen.findByRole("heading", { name: "loading" })).toBeInTheDocument();
+    resolveRefresh();
+    await waitFor(() => { expect(healthButton).toHaveTextContent("healthy"); expect(healthButton).toBeEnabled(); });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "healthy" })).toBeInTheDocument());
+    fireEvent.click(document.querySelector(".mantine-Drawer-close"));
+
+    fireEvent.click(refreshButton);
+    await waitFor(() => expect(healthButton).toHaveTextContent("loading"));
+    rejectRefresh(new Error("Refresh unavailable"));
+    await waitFor(() => { expect(healthButton).toHaveTextContent("stale"); expect(healthButton).toBeEnabled(); });
+    expect(container.querySelector('[role="alert"]')).toHaveTextContent("Refresh unavailable");
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
   }, 60_000);

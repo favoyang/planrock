@@ -22,6 +22,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
+import packageJson from "../../package.json";
 import { fetchAllPages } from "./pagination";
 import "./styles.css";
 
@@ -123,8 +124,8 @@ function PlanDrawer({ plan, onClose }) {
   </Drawer>;
 }
 
-function HealthDrawer({ overview, onClose }) {
-  const state = overview.health?.state || (overview.incomplete ? "degraded" : "healthy");
+function HealthDrawer({ overview, onClose, displayState }) {
+  const state = displayState || overview.health?.state || (overview.incomplete ? "degraded" : "healthy");
   return <Drawer opened onClose={onClose} title="Registry and health" position="right" size="lg"><Stack><div><Text className="detail-label">Current state</Text><Title order={2}>{state}</Title></div><Group><Badge variant="light">{overview.summary.invalid} invalid</Badge><Badge variant="light">{overview.diagnostics.length} diagnostics shown</Badge></Group><Divider />{overview.diagnostics.length ? <Stack gap="sm">{overview.diagnostics.map((item, index) => <Paper key={`${item.code}-${index}`} withBorder p="md"><Text fw={650}>{item.code}</Text><Text size="sm" c="dimmed">{item.message}</Text></Paper>)}</Stack> : <Text c="dimmed">No registry or scan warnings.</Text>}</Stack></Drawer>;
 }
 
@@ -141,6 +142,7 @@ export function App() {
   const [healthOpen, setHealthOpen] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const overlayTrigger = useRef(null);
 
   async function load() {
@@ -165,31 +167,30 @@ export function App() {
 
   const filtered = useMemo(() => filterPlans(allPlans, { lifecycle, workflow, project, query }), [allPlans, lifecycle, workflow, project, query]);
 
-  async function refresh() { try { setRefreshing(true); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setError(reason.message); } finally { setRefreshing(false); } }
+  async function refresh() { try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { setRefreshing(false); } }
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
   function closePlan() { setSelected(null); restoreOverlayFocus(); }
   function closeHealth() { setHealthOpen(false); restoreOverlayFocus(); }
-  const healthState = overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
+  const healthState = refreshing ? "loading" : refreshFailed ? "stale" : overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
   const healthColor = healthState === "healthy" ? "teal" : healthState === "loading" ? "gray" : "orange";
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell"><Container size="xl" py={{ base: "lg", sm: 36 }}>
-      <header className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">Saved plans</Text></Group><Title order={1}>Dashboard</Title></div><Group gap="sm"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button></Group></header>
+      <header className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></header>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
             <TextInput label="Search" aria-label="Search plans" placeholder="Title, project, or path" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
-            <Select label="Project" aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} />
-            <div className="project-toggle"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /><Text size="xs" c="dimmed">{projectOptions.length} of {repositories.length} projects shown</Text></div>
+            <div className="project-filter-line"><Select label="Project" aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /><div className="project-toggle"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /><Text size="xs" c="dimmed">{projectOptions.length} of {repositories.length} projects shown</Text></div></div>
           </SimpleGrid>
           <Divider my="md" />
-          <div className="state-grid"><div><Text className="filter-label">State</Text><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><Text className="filter-label">Open workflow</Text><div className="segmented-scroll"><SegmentedControl aria-label="Open workflow" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}<div className="refresh-meta"><Text size="xs" c="dimmed">Last refreshed</Text><Text size="sm" fw={550}>{new Date(overview.refreshedAt).toLocaleString()}</Text></div></div>
+          <div className="state-grid"><div><Text className="filter-label">State</Text><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><Text className="filter-label">Open workflow</Text><div className="segmented-scroll"><SegmentedControl aria-label="Open workflow" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
         </Paper>
         <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelected(plan); }} />
       </Stack>}
       {selected && <PlanDrawer plan={selected} onClose={closePlan} />}
-      {healthOpen && overview && <HealthDrawer overview={overview} onClose={closeHealth} />}
+      {healthOpen && overview && <HealthDrawer overview={overview} displayState={healthState} onClose={closeHealth} />}
     </Container></div>
   </MantineProvider>;
 }
