@@ -46,7 +46,7 @@ function get(pathname) { return new Promise((resolve, reject) => { const request
     const html = await get("/"); assert.equal(html.status, 200); assert.match(html.body, /<title>Planrock<\/title>/); assert.match(html.headers["content-security-policy"], /default-src 'self'/);
     const assets = [...html.body.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]); assert.ok(assets.length >= 2, "packaged dashboard HTML must reference local script and style assets");
     for (const asset of assets) assert.equal((await get(asset)).status, 200, `packaged dashboard asset failed: ${asset}`);
-    const unauthenticated = await get("/api/health"); assert.equal(unauthenticated.status, 401);
+    const health = await get("/api/health"); assert.equal(health.status, 200); assert.equal(JSON.parse(health.body).service, "planrock"); assert.equal(health.headers["access-control-allow-origin"], undefined);
   } finally { run(cli, ["dashboard", "stop", "--port", String(port)]); }
   process.stdout.write(`Validated ${packed[0].filename} (${packed[0].size} bytes) from an installed prefix.\n`);
 })().catch((error) => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
