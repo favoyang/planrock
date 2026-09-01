@@ -19,7 +19,7 @@ function runAsync(home, args, extraEnv = {}) { return new Promise((resolve) => {
 function birthIdentity(pid = process.pid) { if (process.platform === "linux") { const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return `linux:${stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]}`; } if (process.platform === "darwin") return `darwin:${execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim()}`; return null; }
 
 test("unrestricted dashboard supports multiple viewers, cross-origin requests, reuse, assertions, and shutdown", { skip: !enabled }, async () => {
-  const { base, home } = fixture(); const repo = path.join(base, "repo"); fs.mkdirSync(path.join(repo, "plans"), { recursive: true }); fs.writeFileSync(path.join(repo, "plans", "one.md"), "---\ntitle: <script>alert(1)</script>\nstate: open\n---\n\n## Goal\n\nUnsafe <img src=x>.\n");
+  const { base, home } = fixture(); const repo = path.join(base, "repo"); fs.mkdirSync(path.join(repo, "plans"), { recursive: true }); fs.mkdirSync(path.join(repo, "docs")); fs.writeFileSync(path.join(repo, "plans", "one.md"), "---\ntitle: <script>alert(1)</script>\nstate: open\n---\n\n## Goal\n\nUnsafe <img src=x>.\n"); fs.writeFileSync(path.join(repo, "docs", "guide.md"), "# Guide\n\nRepository documentation.\n");
   run(home, ["project", "add", repo, "--name", "Repo"]); const port = randomPort();
   try {
     const started = JSON.parse(run(home, ["dashboard", "start", "--port", String(port), "--json"]).stdout); assert.equal(started.action, "started"); assert.equal(started.url, `http://127.0.0.1:${port}/`); assert.equal(JSON.stringify(started).includes("capability"), false);
@@ -32,6 +32,15 @@ test("unrestricted dashboard supports multiple viewers, cross-origin requests, r
     const plans = await fetch(`${baseUrl}/api/collection?name=openPlans`); const planId = (await plans.json()).items[0].id;
     const planSource = await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`); assert.equal(planSource.status, 200); assert.match(planSource.headers.get("content-type"), /^text\/plain/); assert.match(await planSource.text(), /Unsafe <img src=x>/);
     assert.equal((await fetch(`${baseUrl}/api/plan?id=missing`)).status, 404);
+    const markdown = await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(fs.realpathSync.native(path.join(repo, "docs", "guide.md")))}`); assert.equal(markdown.status, 200); const markdownBody = await markdown.json(); assert.equal(markdownBody.relativeFile, "docs/guide.md"); assert.match(markdownBody.content, /Repository documentation/);
+    assert.equal((await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(path.join(base, "outside.md"))}`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: "http://evil.example" }, body: "{}" })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", body: "{}" })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: baseUrl }, body: "{}" })).status, 200);
+    const originalPlan = path.join(repo, "plans", "one-original.md"); fs.renameSync(path.join(repo, "plans", "one.md"), originalPlan); fs.symlinkSync(path.join(repo, "docs", "guide.md"), path.join(repo, "plans", "one.md"));
+    assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: baseUrl }, body: "{}" })).status, 500); fs.unlinkSync(path.join(repo, "plans", "one.md")); fs.renameSync(originalPlan, path.join(repo, "plans", "one.md"));
+    const indexedPlanContent = fs.readFileSync(path.join(repo, "plans", "one.md")); fs.writeFileSync(path.join(repo, "plans", "one.md"), "---\ntitle: Replaced plan\nstate: open\n---\n");
+    assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: baseUrl }, body: "{}" })).status, 500); fs.writeFileSync(path.join(repo, "plans", "one.md"), indexedPlanContent);
     const originalPlans = path.join(repo, "plans-original"); const outsidePlans = path.join(base, "outside-plans"); fs.mkdirSync(outsidePlans); fs.writeFileSync(path.join(outsidePlans, "one.md"), "escaped source"); fs.renameSync(path.join(repo, "plans"), originalPlans); fs.symlinkSync(outsidePlans, path.join(repo, "plans"), "dir");
     assert.equal((await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`)).status, 404); fs.unlinkSync(path.join(repo, "plans")); fs.renameSync(originalPlans, path.join(repo, "plans"));
     const secondViewer = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "another-viewer.example", Origin: "http://another-viewer.example" } }); assert.equal(secondViewer.status, 200);

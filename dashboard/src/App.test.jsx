@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, copyText, fileHref, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
+import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -10,18 +10,13 @@ describe("dashboard workflow", () => {
   it("resolves relative Markdown plan links across native path formats", () => {
     expect(resolvePlanPath("pending.md", "/tmp/plans/active.md")).toBe("/tmp/plans/pending.md");
     expect(resolvePlanPath("pending.md", "C:\\repo\\plans\\active.md")).toBe("C:/repo/plans/pending.md");
+    expect(resolvePlanPath("../docs/My%20Guide.md", "/tmp/plans/active.md")).toBe("/tmp/docs/My Guide.md");
+    expect(resolvePlanPath("<../docs/My Guide.md>", "/tmp/plans/active.md")).toBe("/tmp/docs/My Guide.md");
   });
 
   it("removes frontmatter before rendering a full plan", () => {
     expect(stripPlanFrontmatter("---\ntitle: Test\n---\n\n## Goal\n\nBody")).toBe("## Goal\n\nBody");
     expect(stripPlanFrontmatter("## Goal\n\nBody")).toBe("## Goal\n\nBody");
-  });
-
-  it("creates system file URLs for native plan paths", () => {
-    expect(fileHref("/tmp/plans/active plan.md")).toBe("file:///tmp/plans/active%20plan.md");
-    expect(fileHref("/tmp/plans/active#plan?.md")).toBe("file:///tmp/plans/active%23plan%3F.md");
-    expect(fileHref("C:\\repo\\plans\\active.md")).toBe("file:///C:/repo/plans/active.md");
-    expect(fileHref("\\\\server\\share\\active plan.md")).toBe("file://server/share/active%20plan.md");
   });
 
   it("derives pending, active, and closed from authored state and progress signals", () => {
@@ -99,12 +94,14 @@ describe("dashboard navigation", () => {
     ];
     const plans = [
       { id: "pending", projectId: "active-repo", projectName: "Active repo", title: "Pending plan", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 2, agentSessions: [], relativeFile: "plans/pending.md", absolutePath: "/tmp/plans/pending.md", createdAt: "2026-08-30", updatedAt: "2026-08-30T06:00:00.000Z" },
-      { id: "active", projectId: "active-repo", projectName: "Active repo", title: "Active plan", state: "open", priority: "P1", checklistDone: 1, checklistTotal: 2, agentSessions: ["codex:019e2f18-930f-7052-999f-e3b083d9373f"], relativeFile: "plans/active.md", absolutePath: "/tmp/plans/active.md", createdAt: "2026-08-30", updatedAt: "2026-08-31T06:00:00.000Z", goalExcerpt: "Read **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Reject [bad](javascript:bad)" },
+      { id: "active", projectId: "active-repo", projectName: "Active repo", title: "Active plan", state: "open", priority: "P1", checklistDone: 1, checklistTotal: 2, agentSessions: ["codex:019e2f18-930f-7052-999f-e3b083d9373e", "codex:019e2f18-930f-7052-999f-e3b083d9373f", "codex:broken"], relativeFile: "plans/active.md", absolutePath: "/tmp/plans/active.md", createdAt: "2026-08-30", updatedAt: "2026-08-31T06:00:00.000Z", goalExcerpt: "Read **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Reject [bad](javascript:bad)" },
       { id: "closed", projectId: "active-repo", projectName: "Active repo", title: "Closed early", state: "closed", priority: "P3", checklistDone: 1, checklistTotal: 4, agentSessions: [], relativeFile: "plans/closed.md", absolutePath: "/tmp/plans/closed.md", createdAt: "2026-08-20", updatedAt: "2026-08-28T06:00:00.000Z", closedAt: "2026-08-29" },
     ];
     const fetchMock = vi.fn(async (url) => {
       if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
-      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Parent line\n  continues here\n  - Nested item\n  continuation after child\n- Reject [bad](javascript:bad)\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n- [ ] Parent task\n  - [ ] Child task\n" };
+      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)**, [`pending.md`](pending.md), and the [guide](../docs/guide.md).\n\n- Keep \\*literal\\*\n- Parent line\n  continues here\n  - Nested item\n  continuation after child\n- Reject [bad](javascript:bad)\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n- [ ] Parent task\n  - [ ] Child task\n" };
+      if (String(url).startsWith("/api/markdown?")) return { ok: true, json: async () => ({ content: "# Guide\n\nPreview body.", absolutePath: "/tmp/docs/guide.md", relativeFile: "docs/guide.md" }) };
+      if (String(url).startsWith("/api/open-plan?")) return { ok: true, json: async () => ({ opened: true }) };
       if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
@@ -137,7 +134,17 @@ describe("dashboard navigation", () => {
     const docsLink = await screen.findByRole("link", { name: "collector docs" });
     expect(docsLink).toHaveAttribute("href", "https://example.com/docs");
     expect(docsLink.closest("strong")).toHaveTextContent("the collector docs");
-    expect(screen.getByRole("button", { name: "pending.md" }).querySelector("code")).toBeInTheDocument();
+    const linkedPlanButton = screen.getByRole("button", { name: "pending.md" });
+    expect(linkedPlanButton.querySelector("code")).toBeInTheDocument();
+    fireEvent.click(linkedPlanButton);
+    expect(screen.getAllByRole("dialog", { name: "Plan details" })).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Pending plan", level: 2 })).toBeInTheDocument();
+    fireEvent.click(document.querySelectorAll(".mantine-Drawer-close")[1]);
+    fireEvent.click(screen.getByRole("button", { name: "guide" }));
+    expect(await screen.findByRole("dialog", { name: "Markdown preview" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Guide" })).toBeInTheDocument();
+    expect(screen.getByText("Preview body.")).toBeInTheDocument();
+    fireEvent.click(document.querySelectorAll(".mantine-Drawer-close")[1]);
     expect(screen.getByText("Keep *literal*")).toBeInTheDocument();
     expect(screen.getByText("Reject bad")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
@@ -145,20 +152,28 @@ describe("dashboard navigation", () => {
     expect(parentItem).toHaveTextContent("Parent line continues here");
     expect(parentItem.querySelector("ul > li")).toHaveTextContent("Nested item");
     expect(parentItem.textContent.indexOf("Nested item")).toBeLessThan(parentItem.textContent.indexOf("continuation after child"));
-    const pathLink = screen.getByRole("link", { name: "/tmp/plans/active.md" });
-    expect(document.querySelector(".plan-content").compareDocumentPosition(pathLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const pathButton = screen.getByRole("button", { name: "/tmp/plans/active.md" });
+    expect(document.querySelector(".plan-content").compareDocumentPosition(pathButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const planTasks = document.querySelectorAll(".plan-content .task-list-item input");
     expect(planTasks).toHaveLength(4); expect(planTasks[0]).toBeChecked(); expect(planTasks[1]).not.toBeChecked();
     expect(planTasks[0]).toHaveAccessibleName("Source body"); expect(planTasks[1]).toHaveAccessibleName("Review result");
     const parentTask = screen.getByRole("checkbox", { name: "Parent task" }).closest(".task-list-item");
     expect(parentTask.querySelector(":scope > .task-text")).toHaveTextContent("Parent task");
     expect(parentTask.querySelector(":scope > ul .task-text")).toHaveTextContent("Child task");
-    expect(pathLink).toHaveClass("detail-meta-value"); expect(pathLink).toHaveAttribute("href", "file:///tmp/plans/active.md");
+    expect(pathButton).toHaveClass("detail-meta-value"); fireEvent.click(pathButton); expect(await screen.findByText("Opened in system")).toBeInTheDocument();
     const detailStats = document.querySelector(".detail-stats");
     expect([...detailStats.querySelectorAll(".detail-stat")].find((item) => item.textContent.includes("Priority"))).toHaveTextContent("PriorityP1");
     expect([...detailStats.querySelectorAll(".detail-stat")].find((item) => item.textContent.includes("State"))).toHaveTextContent("StateActive");
     expect(screen.queryByText("Plan", { exact: true })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    const goChat = screen.getByRole("link", { name: "Go chat" });
+    expect(goChat).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f");
+    fireEvent.click(screen.getByRole("button", { name: "Choose agent session" }));
+    const sessionItems = await screen.findAllByRole("menuitem");
+    expect(sessionItems).toHaveLength(2);
+    expect(sessionItems[0]).toHaveTextContent("Latest · codex:019e2f18-930f-7052-999f-e3b083d9373f"); expect(sessionItems[0]).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f");
+    expect(sessionItems[1]).toHaveTextContent("codex:019e2f18-930f-7052-999f-e3b083d9373e"); expect(sessionItems[1]).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373e");
+    fireEvent.click(screen.getByRole("button", { name: "Choose agent session" }));
     const copyGoal = screen.getByRole("button", { name: "Copy goal command" });
     expect(copyGoal.compareDocumentPosition(document.querySelector(".plan-content")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const sessionLink = screen.getByRole("link", { name: "codex:019e2f18-930f-7052-999f-e3b083d9373f" });
@@ -186,7 +201,7 @@ describe("dashboard navigation", () => {
     const refreshButton = [...container.querySelectorAll("button")].find((button) => button.textContent.includes("Refresh"));
     expect(healthButton).toHaveTextContent("healthy");
     fireEvent.click(refreshButton);
-    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); expect(refreshButton).toHaveTextContent("Refreshing…"); expect(refreshButton).toBeDisabled(); expect(refreshButton.querySelector(".mantine-Loader-root")).toBeNull(); });
+    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); expect(refreshButton).toHaveTextContent("Refresh"); expect(refreshButton).toHaveClass("refreshing"); expect(refreshButton).toBeDisabled(); expect(refreshButton.querySelector(".refresh-indicator")).toBeInTheDocument(); expect(refreshButton.querySelector(".mantine-Loader-root")).toBeNull(); });
     fireEvent.click(healthButton);
     expect(await screen.findByRole("heading", { name: "loading" })).toBeInTheDocument();
     resolveRefresh();
@@ -201,5 +216,5 @@ describe("dashboard navigation", () => {
     expect(container.querySelector('[role="alert"]')).toHaveTextContent("Refresh unavailable");
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
-  }, 60_000);
+  }, 90_000);
 });

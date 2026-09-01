@@ -30,7 +30,7 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.health-button:not\(\.healthy, \.loading\) \.health-dot \{ background: var\(--mantine-color-orange-4\); \}/);
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
-  assert.match(source, /<MarkdownText className="plan-content" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanSource\}>/);
+  assert.match(source, /<MarkdownText className="plan-content" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanOverlay\} onOpenMarkdown=\{openMarkdownOverlay\}>/);
   assert.match(source, /function renderMarkdownList/);
   assert.match(styles, /\.refresh-control \{[^}]*width: 9rem;[^}]*font-variant-numeric: tabular-nums;/s);
   assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
@@ -50,9 +50,16 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.dashboard-navbar \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /codex:\/\/threads\/\$\{encodeURIComponent/);
-  assert.match(source, /href=\{fileHref\(plan\.absolutePath\)\}/);
+  assert.match(source, /api\/open-plan\?id=/);
+  assert.match(source, /api\/markdown\?id=/);
+  assert.match(source, /function MarkdownDrawer/);
+  assert.match(source, />Go chat</);
   assert.doesNotMatch(source, />Copy path</);
   assert.match(source, /miw=\{112\} disabled=\{refreshing\} aria-busy=\{refreshing\}/);
+  assert.match(source, /leftSection=\{<span className="refresh-indicator"/);
+  assert.match(source, /Math\.max\(0, 650 - \(Date\.now\(\) - startedAt\)\)/);
+  assert.match(styles, /\.refresh-button\.refreshing \.refresh-indicator \{[^}]*animation: refresh-spin 700ms linear infinite;/s);
+  assert.match(styles, /\.detail-state-value \{ font-size: var\(--mantine-font-size-sm\); \}/);
   assert.doesNotMatch(source, /loading=\{refreshing\}/);
   assert.match(source, /<PlanProgress plan=\{plan\} className="detail-progress" \/>/);
   assert.match(styles, /\.detail-meta-value \{ font-size: var\(--mantine-font-size-xs\);/);

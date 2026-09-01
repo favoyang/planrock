@@ -32,6 +32,9 @@ body {
 }
 
 .refresh-control { display: grid; width: 9rem; justify-items: end; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.refresh-indicator { width: 14px; height: 14px; border: 2px solid transparent; border-radius: 50%; }
+.refresh-button.refreshing .refresh-indicator { border-color: var(--mantine-color-teal-6); border-right-color: transparent; animation: refresh-spin 700ms linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 
 .brand-mark {
   color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-3));
@@ -221,7 +224,13 @@ body {
 .detail-stats .relative-time,
 .detail-stat { text-align: left; }
 .detail-stat { display: grid; align-content: start; justify-items: start; gap: 4px; }
-.plan-source pre { max-height: 20rem; overflow: auto; margin: var(--mantine-spacing-xs) 0 0; padding: var(--mantine-spacing-sm); border-radius: var(--mantine-radius-sm); background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7)); font-size: 0.75rem; line-height: 1.5; white-space: pre-wrap; }
+.detail-state-value { font-size: var(--mantine-font-size-sm); }
+.detail-actions { flex-wrap: wrap; }
+.chat-menu-trigger { padding-inline: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-button.refreshing .refresh-indicator { animation: none; }
+}
 
 @media (min-width: 901px) {
   .plan-row:has(.plan-date[data-expanded]) .plan-row-button { grid-template-columns: minmax(260px, 1fr) minmax(180px, 250px); }

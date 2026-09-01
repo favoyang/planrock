@@ -9,6 +9,7 @@ import {
   Drawer,
   Group,
   MantineProvider,
+  Menu,
   Paper,
   Progress,
   SegmentedControl,
@@ -103,22 +104,10 @@ function planSourceHref(plan) {
 
 function normalizePlanPath(value) { return String(value).replace(/\\/g, "/"); }
 
-export function fileHref(value) {
-  const normalized = normalizePlanPath(value);
-  const unc = normalized.match(/^\/\/([^/]+)(\/.*)?$/);
-  if (unc) {
-    const path = (unc[2] || "/").split("/").map(encodeURIComponent).join("/");
-    return `file://${unc[1]}${path}`;
-  }
-  const encoded = normalized
-    .split("/")
-    .map((part, index) => (index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)))
-    .join("/");
-  return `file://${normalized.startsWith("/") ? "" : "/"}${encoded}`;
-}
-
 export function resolvePlanPath(value, basePath) {
-  const target = normalizePlanPath(value).split(/[?#]/, 1)[0]; const base = normalizePlanPath(basePath);
+  const rawTarget = normalizePlanPath(value).split(/[?#]/, 1)[0]; const wrappedTarget = rawTarget.startsWith("<") && rawTarget.endsWith(">") ? rawTarget.slice(1, -1) : rawTarget;
+  let target; try { target = decodeURIComponent(wrappedTarget); } catch { target = wrappedTarget; }
+  const base = normalizePlanPath(basePath);
   const targetDrive = target.match(/^[a-z]:\//i)?.[0].slice(0, 2); const baseDrive = base.match(/^[a-z]:\//i)?.[0].slice(0, 2);
   const absolute = target.startsWith("/") || Boolean(targetDrive); const root = targetDrive ? `${targetDrive}/` : absolute ? "/" : baseDrive ? `${baseDrive}/` : "/";
   const stripRoot = (pathValue, drive) => pathValue.slice(drive ? 3 : pathValue.startsWith("/") ? 1 : 0);
@@ -138,8 +127,9 @@ function markdownTarget(value, basePath, plansByPath) {
   const remote = webHref(value);
   if (remote) return { href: remote, plan: null };
   if (!basePath || /^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
-  const target = plansByPath.get(resolvePlanPath(value, basePath));
-  return target ? { href: planSourceHref(target), plan: target } : null;
+  const absolutePath = resolvePlanPath(value, basePath); const target = plansByPath.get(absolutePath);
+  if (target) return { href: planSourceHref(target), plan: target };
+  return /\.md(?:own)?$/i.test(absolutePath) ? { markdown: { absolutePath, label: value.split(/[\\/]/).at(-1) || value } } : null;
 }
 
 function renderInlineMarkdown(value, context, keyPrefix) {
@@ -150,7 +140,7 @@ function renderInlineMarkdown(value, context, keyPrefix) {
     if (value[cursor] === "`") { const end = value.indexOf("`", cursor + 1); if (end !== -1) { flush(); nodes.push(<code key={`${keyPrefix}-code-${cursor}`}>{value.slice(cursor + 1, end)}</code>); cursor = end + 1; continue; } }
     if (value.startsWith("**", cursor)) { const end = value.indexOf("**", cursor + 2); if (end !== -1) { flush(); nodes.push(<strong key={`${keyPrefix}-strong-${cursor}`}>{renderInlineMarkdown(value.slice(cursor + 2, end), context, `${keyPrefix}-strong-${cursor}`)}</strong>); cursor = end + 2; continue; } }
     if (value[cursor] === "*") { const end = value.indexOf("*", cursor + 1); if (end !== -1) { flush(); nodes.push(<em key={`${keyPrefix}-em-${cursor}`}>{renderInlineMarkdown(value.slice(cursor + 1, end), context, `${keyPrefix}-em-${cursor}`)}</em>); cursor = end + 1; continue; } }
-    if (value[cursor] === "[") { const labelEnd = value.indexOf("](", cursor + 1); const targetEnd = labelEnd === -1 ? -1 : value.indexOf(")", labelEnd + 2); if (targetEnd !== -1) { flush(); const label = renderInlineMarkdown(value.slice(cursor + 1, labelEnd), context, `${keyPrefix}-link-${cursor}`); const target = markdownTarget(value.slice(labelEnd + 2, targetEnd), context.basePath, context.plansByPath); nodes.push(target?.plan ? <button key={`${keyPrefix}-link-${cursor}`} type="button" className="markdown-link" onClick={(event) => context.onOpenPlan(event, target.plan)}>{label}</button> : target ? <a key={`${keyPrefix}-link-${cursor}`} href={target.href} target="_blank" rel="noreferrer">{label}</a> : <React.Fragment key={`${keyPrefix}-link-${cursor}`}>{label}</React.Fragment>); cursor = targetEnd + 1; continue; } }
+    if (value[cursor] === "[") { const labelEnd = value.indexOf("](", cursor + 1); const targetEnd = labelEnd === -1 ? -1 : value.indexOf(")", labelEnd + 2); if (targetEnd !== -1) { flush(); const label = renderInlineMarkdown(value.slice(cursor + 1, labelEnd), context, `${keyPrefix}-link-${cursor}`); const target = markdownTarget(value.slice(labelEnd + 2, targetEnd), context.basePath, context.plansByPath); nodes.push(target?.plan ? <button key={`${keyPrefix}-link-${cursor}`} type="button" className="markdown-link" onClick={(event) => context.onOpenPlan(event, target.plan)}>{label}</button> : target?.markdown ? <button key={`${keyPrefix}-link-${cursor}`} type="button" className="markdown-link" onClick={(event) => context.onOpenMarkdown(event, target.markdown)}>{label}</button> : target ? <a key={`${keyPrefix}-link-${cursor}`} href={target.href} target="_blank" rel="noreferrer">{label}</a> : <React.Fragment key={`${keyPrefix}-link-${cursor}`}>{label}</React.Fragment>); cursor = targetEnd + 1; continue; } }
     text += value[cursor]; cursor += 1;
   }
   flush(); return nodes;
@@ -184,8 +174,8 @@ function renderMarkdownList(lines, start, context, keyPrefix) {
   return { node: <List className={items.some((item) => item.props.className) ? "task-list" : undefined} key={`${keyPrefix}-${start}`}>{items}</List>, index };
 }
 
-function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan }) {
-  const lines = String(children || "").split("\n"); const blocks = []; const context = { basePath, plansByPath, onOpenPlan }; let index = 0;
+function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan, onOpenMarkdown }) {
+  const lines = String(children || "").split("\n"); const blocks = []; const context = { basePath, plansByPath, onOpenPlan, onOpenMarkdown }; let index = 0;
   const blockStart = (line) => !line.trim() || /^\s*(?:[-*+] |\d+\. |#{1,6} |```)/.test(line);
   while (index < lines.length) {
     if (!lines[index].trim()) { index += 1; continue; }
@@ -199,7 +189,8 @@ function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan }
 
 function sessionHref(session) {
   const [agent, ...parts] = String(session).split(":");
-  return agent === "codex" && parts.length ? `codex://threads/${encodeURIComponent(parts.join(":"))}` : null;
+  const threadId = parts.join(":");
+  return agent === "codex" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(threadId) ? `codex://threads/${encodeURIComponent(threadId)}` : null;
 }
 
 function completion(plan) {
@@ -239,17 +230,29 @@ function PlanList({ plans, onSelect }) {
   </section>;
 }
 
+function ChatAction({ sessions = [] }) {
+  const links = sessions.map((session) => ({ session, href: sessionHref(session) })).filter((item) => item.href);
+  const latest = links.at(-1); if (!latest) return null;
+  return <Button.Group><Button component="a" href={latest.href}>Go chat</Button>{links.length > 1 && <Menu position="bottom-end" withinPortal><Menu.Target><Button variant="filled" className="chat-menu-trigger" aria-label="Choose agent session">▾</Button></Menu.Target><Menu.Dropdown>{[...links].reverse().map((item, index) => <Menu.Item component="a" href={item.href} key={item.session}>{index === 0 ? "Latest · " : ""}{item.session}</Menu.Item>)}</Menu.Dropdown></Menu>}</Button.Group>;
+}
+
+function MarkdownDrawer({ preview, plansByPath, onClose, onOpenPlan, onOpenMarkdown }) {
+  return <Drawer opened onClose={onClose} title="Markdown preview" position="right" size="lg">
+    <Stack gap="md"><div><Title className="detail-title" order={2}>{preview.label}</Title>{preview.relativeFile && <Text size="xs" c="dimmed" className="path-text">{preview.relativeFile}</Text>}</div>{preview.loading && <Text size="sm" c="dimmed">Loading Markdown…</Text>}{preview.error && <Text role="alert" size="sm" c="red">{preview.error}</Text>}{preview.content && <MarkdownText className="plan-content" basePath={preview.absolutePath} plansByPath={plansByPath} onOpenPlan={onOpenPlan} onOpenMarkdown={onOpenMarkdown}>{stripPlanFrontmatter(preview.content)}</MarkdownText>}</Stack>
+  </Drawer>;
+}
+
 function PlanDrawer({ plan, plans, onClose }) {
   const workflow = workflowState(plan);
   const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath), item])), [plans]);
   const [copyStatus, setCopyStatus] = useState("");
+  const [pathStatus, setPathStatus] = useState("");
   const [planContent, setPlanContent] = useState("");
   const [planContentError, setPlanContentError] = useState("");
   const [planContentLoading, setPlanContentLoading] = useState(true);
-  const [sourcePlan, setSourcePlan] = useState(null);
-  const [sourceText, setSourceText] = useState("");
-  const [sourceError, setSourceError] = useState("");
-  const [sourceLoading, setSourceLoading] = useState(false);
+  const [linkedPlan, setLinkedPlan] = useState(null);
+  const [markdownPreview, setMarkdownPreview] = useState(null);
+  const markdownRequest = useRef(0);
   useEffect(() => {
     const controller = new AbortController(); setPlanContent(""); setPlanContentError(""); setPlanContentLoading(true);
     fetch(planSourceHref(plan), { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error(`Plan source returned ${response.status}`); return response.text(); }).then((text) => setPlanContent(stripPlanFrontmatter(text))).catch((reason) => { if (reason.name !== "AbortError") setPlanContentError(reason.message); }).finally(() => { if (!controller.signal.aborted) setPlanContentLoading(false); });
@@ -259,27 +262,36 @@ function PlanDrawer({ plan, plans, onClose }) {
     try { await copyText(value); setCopyStatus(`${label} copied`); }
     catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
   }
-  async function openPlanSource(event, target) {
-    event.preventDefault(); setSourcePlan(target); setSourceText(""); setSourceError(""); setSourceLoading(true);
-    try { const response = await fetch(planSourceHref(target)); if (!response.ok) throw new Error(`Plan source returned ${response.status}`); setSourceText(await response.text()); }
-    catch (reason) { setSourceError(reason.message); }
-    finally { setSourceLoading(false); }
+  function closeMarkdownOverlay() { markdownRequest.current += 1; setMarkdownPreview(null); }
+  function openPlanOverlay(event, target) { event.preventDefault(); closeMarkdownOverlay(); setLinkedPlan(target); }
+  async function openMarkdownOverlay(event, target) {
+    event.preventDefault(); setLinkedPlan(null); const request = markdownRequest.current + 1; markdownRequest.current = request; setMarkdownPreview({ ...target, loading: true, content: "", error: "" });
+    try { const result = await api(`/api/markdown?id=${encodeURIComponent(plan.id)}&path=${encodeURIComponent(target.absolutePath)}`); if (markdownRequest.current === request) setMarkdownPreview({ ...target, ...result, label: target.label, loading: false, error: "" }); }
+    catch (reason) { if (markdownRequest.current === request) setMarkdownPreview({ ...target, loading: false, content: "", error: reason.message }); }
   }
-  return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
-    <Stack gap="md">
-      <div><Title className="detail-title" order={2}>{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
-      <PlanProgress plan={plan} className="detail-progress" />
-      <Divider />
-      <Group className="detail-stats" align="flex-start"><div className="detail-stat"><Text className="time-label">Priority</Text><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div><div className="detail-stat"><Text className="time-label">State</Text><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></div><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
-      <Group><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
-      {copyStatus && <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>}
-      <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{planContent}</MarkdownText>}</section>
-      <div><Text className="detail-label">Plan path</Text><Text component="a" className="path-text detail-link detail-meta-value" href={fileHref(plan.absolutePath)} target="_blank" rel="noreferrer" title="Open plan in the system file handler">{plan.absolutePath}</Text></div>
-      {sourcePlan && <Paper className="plan-source" withBorder p="sm" aria-live="polite"><Group justify="space-between" gap="sm" wrap="nowrap"><Text size="sm" fw={650} truncate>{sourcePlan.relativeFile}</Text><Button size="compact-xs" variant="subtle" onClick={() => setSourcePlan(null)}>Hide source</Button></Group>{sourceLoading && <Text size="sm" c="dimmed">Loading source…</Text>}{sourceError && <Text role="alert" size="sm" c="red">{sourceError}</Text>}{sourceText && <pre><code>{sourceText}</code></pre>}</Paper>}
-      {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="xs" className="path-text detail-link detail-meta-value" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>; })}</Stack></div>}
-      {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
-    </Stack>
-  </Drawer>;
+  async function openPlanPath() {
+    setPathStatus("Opening…");
+    try { await api(`/api/open-plan?id=${encodeURIComponent(plan.id)}`, { method: "POST", body: "{}" }); setPathStatus("Opened in system"); }
+    catch { setPathStatus("Could not open this plan in the system"); }
+  }
+  return <>
+    <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
+      <Stack gap="md">
+        <div><Title className="detail-title" order={2}>{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
+        <PlanProgress plan={plan} className="detail-progress" />
+        <Divider />
+        <Group className="detail-stats" align="flex-start"><div className="detail-stat"><Text className="time-label">Priority</Text><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div><div className="detail-stat"><Text className="time-label">State</Text><Badge className={`workflow detail-state-value ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></div><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
+        <Group className="detail-actions" gap="sm"><ChatAction sessions={plan.agentSessions} /><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
+        {copyStatus && <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>}
+        <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay}>{planContent}</MarkdownText>}</section>
+        <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link detail-meta-value" onClick={openPlanPath} title="Open plan in the system">{plan.absolutePath}</UnstyledButton>{pathStatus && <Text role="status" size="xs" c={pathStatus.startsWith("Could not") ? "red" : "dimmed"}>{pathStatus}</Text>}</div>
+        {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="xs" className="path-text detail-link detail-meta-value" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>; })}</Stack></div>}
+        {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
+      </Stack>
+    </Drawer>
+    {markdownPreview && <MarkdownDrawer preview={markdownPreview} plansByPath={plansByPath} onClose={closeMarkdownOverlay} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay} />}
+    {linkedPlan && <PlanDrawer plan={linkedPlan} plans={plans} onClose={() => setLinkedPlan(null)} />}
+  </>;
 }
 
 function HealthDrawer({ overview, onClose, displayState }) {
@@ -325,7 +337,7 @@ export function App() {
 
   const filtered = useMemo(() => filterPlans(allPlans, { lifecycle, workflow, project, query }), [allPlans, lifecycle, workflow, project, query]);
 
-  async function refresh() { try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { setRefreshing(false); } }
+  async function refresh() { const startedAt = Date.now(); try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { const remaining = Math.max(0, 650 - (Date.now() - startedAt)); if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining)); setRefreshing(false); } }
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
   function closePlan() { setSelected(null); restoreOverlayFocus(); }
   function closeHealth() { setHealthOpen(false); restoreOverlayFocus(); }
@@ -334,7 +346,7 @@ export function App() {
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell">
-      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" miw={112} disabled={refreshing} aria-busy={refreshing} onClick={refresh}>{refreshing ? "Refreshing…" : "Refresh"}</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></div></Container></header>
+      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing} aria-busy={refreshing} leftSection={<span className="refresh-indicator" aria-hidden="true" />} onClick={refresh}>Refresh</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></div></Container></header>
       <Container size="xl" pt="xs" pb={{ base: "lg", sm: 36 }}>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
