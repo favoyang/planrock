@@ -29,6 +29,8 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.health-button\.healthy \.health-dot \{ background: var\(--mantine-color-teal-4\); \}/);
   assert.match(styles, /dark.*\.health-button:not\(\.healthy, \.loading\) \.health-dot \{ background: var\(--mantine-color-orange-4\); \}/);
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
+  assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
+  assert.match(source, /className="goal-excerpt" size="sm"/);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);

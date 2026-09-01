@@ -109,14 +109,14 @@ function PlanDrawer({ plan, onClose }) {
     catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
   }
   return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
-    <Stack gap="lg">
-      <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title order={2} mt="sm">{plan.title}</Title><Text c="dimmed">{plan.projectName}</Text></div>
-      <div><Group justify="space-between"><Text fw={600}>Progress</Text><Text>{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group><Progress value={percent} mt="xs" /></div>
+    <Stack gap="md">
+      <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title className="detail-title" order={2} mt="xs">{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
+      <div><Group justify="space-between"><Text size="sm" fw={600}>Progress</Text><Text size="sm">{plan.checklistDone}/{plan.checklistTotal} · {percent}%</Text></Group><Progress value={percent} mt="xs" /></div>
       <Divider />
-      <div><Text className="detail-label">Goal</Text><Text className="goal-excerpt">{plan.goalExcerpt || "No Goal excerpt."}</Text></div>
-      <div><Text className="detail-label">Plan path</Text><Text className="path-text">{plan.absolutePath}</Text></div>
+      <div><Text className="detail-label">Goal</Text><Text className="goal-excerpt" size="sm">{plan.goalExcerpt || "No Goal excerpt."}</Text></div>
+      <div><Text className="detail-label">Plan path</Text><Text className="path-text" size="sm">{plan.absolutePath}</Text></div>
       {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => <Text key={session} size="sm" className="path-text">{session}</Text>)}</Stack></div>}
-      {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <a key={link} href={link} target="_blank" rel="noreferrer">{link}</a>)}</Stack></div>}
+      {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
       <Group grow><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => copy("Path", plan.absolutePath)}>Copy path</Button></Group>
       <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>
     </Stack>

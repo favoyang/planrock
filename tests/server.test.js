@@ -148,8 +148,12 @@ test("identified newer or incompatible listeners fail safely without shutdown", 
     run(home, ["project", "list"]);
     const server = http.createServer((request, response) => { if (request.url === "/api/control/stop") stopRequests += 1; response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ service: "planrock", pid: process.pid, birthIdentity: currentBirthIdentity, instanceId, port, ...variant })); });
     await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
-    const owner = { schemaVersion: 1, pid: process.pid, birthIdentity: currentBirthIdentity, port, instanceId, ...variant, startedAt: new Date().toISOString() }; fs.writeFileSync(path.join(home, ".agents", "planrock", "dashboard-owner.json"), `${JSON.stringify(owner)}\n`, { mode: 0o600 });
-    try { const result = await runAsync(home, ["dashboard", "start", "--port", String(port)]); assert.equal(result.status, 1); assert.match(result.stderr, /incompatible control protocol/); assert.equal(stopRequests, 0); assert.equal(server.listening, true); } finally { await new Promise((resolve) => server.close(resolve)); }
+    const ownerPath = path.join(home, ".agents", "planrock", "dashboard-owner.json"); const owner = { schemaVersion: 1, pid: process.pid, birthIdentity: currentBirthIdentity, port, instanceId, ...variant, startedAt: new Date().toISOString() }; fs.writeFileSync(ownerPath, `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+    try {
+      const started = await runAsync(home, ["dashboard", "start", "--port", String(port)]); assert.equal(started.status, 1); assert.match(started.stderr, /incompatible control protocol/);
+      const stopped = await runAsync(home, ["dashboard", "stop", "--port", String(port)]); assert.equal(stopped.status, 1); assert.match(stopped.stderr, /incompatible control protocol/);
+      assert.equal(stopRequests, 0); assert.equal(server.listening, true); assert.equal(fs.existsSync(ownerPath), true);
+    } finally { await new Promise((resolve) => server.close(resolve)); }
   }
 });
 

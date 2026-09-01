@@ -157,7 +157,8 @@ body {
 [data-mantine-color-scheme="dark"] .priority.P4 { color: #f8fafc; background: #475569; }
 
 .empty-state { padding: 56px 24px; text-align: center; }
-.goal-excerpt { line-height: 1.7; white-space: pre-wrap; }
+.detail-title { font-size: 1.125rem; font-weight: 650; line-height: 1.4; }
+.goal-excerpt { line-height: 1.6; white-space: pre-wrap; }
 .path-text { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
 @media (max-width: 900px) {
