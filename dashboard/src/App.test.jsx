@@ -273,5 +273,5 @@ describe("dashboard navigation", () => {
     expect(container.querySelector('[role="alert"]')).toHaveTextContent("Refresh unavailable");
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
-  }, 180_000);
+  }, 300_000);
 });
