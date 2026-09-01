@@ -51,11 +51,14 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /api\/open-chat\?id=/);
   assert.match(source, /api\/open-plan\?id=/);
+  assert.match(source, /nativeActionsAvailable=\{overview\?\.nativeActions === true\}/);
+  assert.match(source, /available on the Planrock host machine only/);
+  assert.match(source, /disabled=\{refreshing \|\| !refreshAvailable\}/);
   assert.match(source, /api\/markdown\?id=/);
   assert.match(source, /function MarkdownDrawer/);
   assert.match(source, />Go chat</);
   assert.doesNotMatch(source, />Copy path</);
-  assert.match(source, /miw=\{112\} disabled=\{refreshing\} aria-busy=\{refreshing\}/);
+  assert.match(source, /miw=\{112\} disabled=\{refreshing \|\| !refreshAvailable\} aria-busy=\{refreshing\}/);
   assert.doesNotMatch(source, /refresh-indicator/);
   assert.match(source, /Math\.max\(0, 800 - \(Date\.now\(\) - startedAt\)\)/);
   assert.match(styles, /\.refresh-button\.refreshing::after \{[^}]*animation: refresh-border-sweep 800ms linear infinite;/s);
@@ -70,9 +73,9 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);
 });
 
-test("release commits both npm version manifests", () => {
+test("release commits version manifests and the version-dependent dashboard build", () => {
   const gitPlugin = releaseConfig.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/git");
-  assert.deepEqual(gitPlugin[1].assets, ["package.json", "package-lock.json"]);
+  assert.deepEqual(gitPlugin[1].assets, ["package.json", "package-lock.json", "dist/dashboard/**"]);
 });
 
 test("Node 18 runtime job installs the tarball as a local path", () => {

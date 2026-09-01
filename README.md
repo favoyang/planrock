@@ -81,11 +81,15 @@ explicit-registration-only. It also performs a one-way, optional import from a
 valid fixed TaskChef schema-2 file without depending on TaskChef code or
 runtime state.
 
-The dashboard listens on all interfaces at port `4210` by default so multiple
-local or LAN viewers can open it without authentication. `--port` overrides
+The dashboard listens on all IPv4 interfaces at port `4210` by default so
+multiple local or LAN viewers can open it without authentication. `--port` overrides
 the port for that invocation and is not persisted. `start` and `open` return a
 plain `http://127.0.0.1:<port>/` URL for local use; replace the host with the
 machine's LAN address for another device.
+
+Only run the dashboard on a trusted local network: every viewer can read the
+indexed plans and Markdown documents they link. Remote viewers are read-only;
+refresh, system-file, chat, and lifecycle controls remain host-only.
 
 Unauthenticated dashboards use lifecycle control protocol 2. Current Planrock
 can hand off a legacy authenticated protocol-1 dashboard, but older protocol-1

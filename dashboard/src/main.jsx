@@ -35,7 +35,7 @@ const theme = createTheme({
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers } });
-  if (!response.ok) throw new Error(`Planrock API returned ${response.status}`);
+  if (!response.ok) { const error = new Error(`Planrock API returned ${response.status}`); error.status = response.status; throw error; }
   return response.json();
 }
 
@@ -260,19 +260,20 @@ function PlanList({ plans, onSelect }) {
   </section>;
 }
 
-function ChatAction({ sessions = [], onOpen }) {
+function ChatAction({ sessions = [], onOpen, disabled = false }) {
   const links = sessions.filter((session) => sessionThreadId(session));
   const latest = links.at(-1); if (!latest) return null;
-  return <Button.Group><Button onClick={() => onOpen(latest)}>Go chat</Button>{links.length > 1 && <Menu position="bottom-end" withinPortal><Menu.Target><Button variant="filled" className="chat-menu-trigger" aria-label="Choose agent session">▾</Button></Menu.Target><Menu.Dropdown>{[...links].reverse().map((session, index) => <Menu.Item onClick={() => onOpen(session)} key={session}>{index === 0 ? "Latest · " : ""}{session}</Menu.Item>)}</Menu.Dropdown></Menu>}</Button.Group>;
+  const explanation = disabled ? "Available on the Planrock host machine only" : undefined;
+  return <Button.Group title={explanation}><Button disabled={disabled} onClick={() => onOpen(latest)}>Go chat</Button>{links.length > 1 && <Menu position="bottom-end" withinPortal><Menu.Target><Button disabled={disabled} variant="filled" className="chat-menu-trigger" aria-label="Choose agent session">▾</Button></Menu.Target><Menu.Dropdown>{[...links].reverse().map((session, index) => <Menu.Item onClick={() => onOpen(session)} key={session}>{index === 0 ? "Latest · " : ""}{session}</Menu.Item>)}</Menu.Dropdown></Menu>}</Button.Group>;
 }
 
 function MarkdownDrawer({ preview, plansByPath, onClose, onOpenPlan, onOpenMarkdown }) {
   return <Drawer opened onClose={onClose} title="Markdown preview" position="right" size="lg">
-    <Stack gap="md"><div><Title className="detail-title" order={2}>{preview.label}</Title>{preview.relativeFile && <Text size="xs" c="dimmed" className="path-text">{preview.relativeFile}</Text>}</div>{preview.loading && <Text size="sm" c="dimmed">Loading Markdown…</Text>}{preview.error && <Text role="alert" size="sm" c="red">{preview.error}</Text>}{preview.content && <MarkdownText className="plan-content" basePath={preview.absolutePath} plansByPath={plansByPath} onOpenPlan={onOpenPlan} onOpenMarkdown={onOpenMarkdown}>{stripPlanFrontmatter(preview.content)}</MarkdownText>}</Stack>
+    <Stack gap="md"><div><Title className="detail-title" order={2}>{preview.label}</Title>{preview.relativeFile && <Text size="xs" c="dimmed" className="path-text">{preview.relativeFile}</Text>}</div>{preview.loading && <Text size="sm" c="dimmed">Loading Markdown…</Text>}{preview.error && <Text role="alert" size="sm" c="red">{preview.error}</Text>}{preview.content && <MarkdownText className="plan-content" basePath={preview.absolutePath} plansByPath={plansByPath} onOpenPlan={onOpenPlan} onOpenMarkdown={(event, target) => onOpenMarkdown(event, target, preview.absolutePath)}>{stripPlanFrontmatter(preview.content)}</MarkdownText>}</Stack>
   </Drawer>;
 }
 
-function PlanDrawer({ plan, plans, onClose }) {
+function PlanDrawer({ plan, plans, onClose, nativeActionsAvailable }) {
   const workflow = workflowState(plan);
   const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath), item])), [plans]);
   const [copyStatus, setCopyStatus] = useState("");
@@ -281,23 +282,23 @@ function PlanDrawer({ plan, plans, onClose }) {
   const [planContent, setPlanContent] = useState("");
   const [planContentError, setPlanContentError] = useState("");
   const [planContentLoading, setPlanContentLoading] = useState(true);
-  const [linkedPlan, setLinkedPlan] = useState(null);
+  const [linkedPlanId, setLinkedPlanId] = useState(null);
   const [markdownPreview, setMarkdownPreview] = useState(null);
   const markdownRequest = useRef(0);
   useEffect(() => {
     const controller = new AbortController(); setPlanContent(""); setPlanContentError(""); setPlanContentLoading(true);
     fetch(planSourceHref(plan), { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error(`Plan source returned ${response.status}`); return response.text(); }).then((text) => setPlanContent(stripPlanFrontmatter(text))).catch((reason) => { if (reason.name !== "AbortError") setPlanContentError(reason.message); }).finally(() => { if (!controller.signal.aborted) setPlanContentLoading(false); });
     return () => controller.abort();
-  }, [plan.id]);
+  }, [plan.id, plan.fingerprint]);
   async function copy(label, value) {
     try { await copyText(value); setCopyStatus(`${label} copied`); }
     catch { setCopyStatus("Copy failed — select the text above and copy it manually"); }
   }
   function closeMarkdownOverlay() { markdownRequest.current += 1; setMarkdownPreview(null); }
-  function openPlanOverlay(event, target) { event.preventDefault(); closeMarkdownOverlay(); setLinkedPlan(target); }
-  async function openMarkdownOverlay(event, target) {
-    event.preventDefault(); setLinkedPlan(null); const request = markdownRequest.current + 1; markdownRequest.current = request; setMarkdownPreview({ ...target, loading: true, content: "", error: "" });
-    try { const result = await api(`/api/markdown?id=${encodeURIComponent(plan.id)}&path=${encodeURIComponent(target.absolutePath)}`); if (markdownRequest.current === request) setMarkdownPreview({ ...target, ...result, label: target.label, loading: false, error: "" }); }
+  function openPlanOverlay(event, target) { event.preventDefault(); closeMarkdownOverlay(); setLinkedPlanId(target.id); }
+  async function openMarkdownOverlay(event, target, sourcePath) {
+    event.preventDefault(); setLinkedPlanId(null); const request = markdownRequest.current + 1; markdownRequest.current = request; setMarkdownPreview({ ...target, loading: true, content: "", error: "" });
+    try { const result = await api(`/api/markdown?id=${encodeURIComponent(plan.id)}&path=${encodeURIComponent(target.absolutePath)}${sourcePath ? `&source=${encodeURIComponent(sourcePath)}` : ""}`); if (markdownRequest.current === request) setMarkdownPreview({ ...target, ...result, label: target.label, loading: false, error: "" }); }
     catch (reason) { if (markdownRequest.current === request) setMarkdownPreview({ ...target, loading: false, content: "", error: reason.message }); }
   }
   async function openPlanPath() {
@@ -310,6 +311,7 @@ function PlanDrawer({ plan, plans, onClose }) {
     try { await api(`/api/open-chat?id=${encodeURIComponent(plan.id)}&session=${encodeURIComponent(session)}`, { method: "POST", body: "{}" }); setChatStatus("Opened in Codex"); }
     catch { setChatStatus("Could not open this chat in Codex"); }
   }
+  const linkedPlan = linkedPlanId ? plans.find((item) => item.id === linkedPlanId) || null : null;
   return <>
     <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
       <Stack gap="md">
@@ -317,17 +319,18 @@ function PlanDrawer({ plan, plans, onClose }) {
         <PlanProgress plan={plan} className="detail-progress" />
         <Divider />
         <Group className="detail-stats" align="flex-start"><div className="detail-stat"><Text className="time-label">Priority</Text><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div><div className="detail-stat"><Text className="time-label">State</Text><Text className="time-value detail-state-value" size="sm" fw={550}>{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Text></div><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
-        <Group className="detail-actions" gap="sm"><ChatAction sessions={plan.agentSessions} onOpen={openChat} /><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
+        <Group className="detail-actions" gap="sm"><ChatAction sessions={plan.agentSessions} onOpen={openChat} disabled={!nativeActionsAvailable} /><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
+        {!nativeActionsAvailable && <Text size="xs" c="dimmed">System file and chat actions are available on the Planrock host machine only.</Text>}
         {chatStatus && <Text role="status" size="sm" c={chatStatus.startsWith("Could not") ? "red" : "dimmed"}>{chatStatus}</Text>}
         {copyStatus && <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>}
         <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay}>{planContent}</MarkdownText>}</section>
-        <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link detail-meta-value" onClick={openPlanPath} title="Open plan in the system">{plan.absolutePath}</UnstyledButton>{pathStatus && <Text role="status" size="xs" c={pathStatus.startsWith("Could not") ? "red" : "dimmed"}>{pathStatus}</Text>}</div>
-        {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => sessionThreadId(session) ? <UnstyledButton key={session} className="path-text detail-link detail-meta-value" onClick={() => openChat(session)} title="Open Codex task">{session}</UnstyledButton> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>)}</Stack></div>}
+        <div><Text className="detail-label">Plan path</Text>{nativeActionsAvailable ? <UnstyledButton className="path-text detail-link detail-meta-value" onClick={openPlanPath} title="Open plan in the system">{plan.absolutePath}</UnstyledButton> : <Text size="xs" className="path-text detail-meta-value">{plan.absolutePath}</Text>}{pathStatus && <Text role="status" size="xs" c={pathStatus.startsWith("Could not") ? "red" : "dimmed"}>{pathStatus}</Text>}</div>
+        {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => sessionThreadId(session) && nativeActionsAvailable ? <UnstyledButton key={session} className="path-text detail-link detail-meta-value" onClick={() => openChat(session)} title="Open Codex task">{session}</UnstyledButton> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>)}</Stack></div>}
         {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
       </Stack>
     </Drawer>
     {markdownPreview && <MarkdownDrawer preview={markdownPreview} plansByPath={plansByPath} onClose={closeMarkdownOverlay} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay} />}
-    {linkedPlan && <PlanDrawer plan={linkedPlan} plans={plans} onClose={() => setLinkedPlan(null)} />}
+    {linkedPlan && <PlanDrawer plan={linkedPlan} plans={plans} onClose={() => setLinkedPlanId(null)} nativeActionsAvailable={nativeActionsAvailable} />}
   </>;
 }
 
@@ -345,20 +348,29 @@ export function App() {
   const [workflow, setWorkflow] = useState("all");
   const [project, setProject] = useState(null);
   const [onlyOpenProjects, setOnlyOpenProjects] = useState(true);
-  const [selected, setSelected] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [healthOpen, setHealthOpen] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const overlayTrigger = useRef(null);
+  const loadGeneration = useRef(0);
 
   async function load() {
-    const next = await api("/api/overview");
-    setOverview(next);
-    const fetchPage = (collection, cursor, limit) => api(`/api/collection?name=${encodeURIComponent(collection)}&limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    const [open, closed, projects] = await Promise.all([fetchAllPages(fetchPage, "openPlans"), fetchAllPages(fetchPage, "closedPlans"), fetchAllPages(fetchPage, "repositories")]);
-    setAllPlans([...open, ...closed]);
-    setRepositories(projects);
+    const generation = loadGeneration.current + 1; loadGeneration.current = generation;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const next = await api("/api/overview");
+        const fetchPage = async (collection, cursor, limit) => { const page = await api(`/api/collection?name=${encodeURIComponent(collection)}&limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`); if (page.snapshotId !== next.snapshotId) { const error = new Error("Planrock snapshot changed while loading"); error.code = "SNAPSHOT_MISMATCH"; throw error; } return page; };
+        const [open, closed, projects] = await Promise.all([fetchAllPages(fetchPage, "openPlans"), fetchAllPages(fetchPage, "closedPlans"), fetchAllPages(fetchPage, "repositories")]);
+        if (generation !== loadGeneration.current) return;
+        setOverview(next); setAllPlans([...open, ...closed]); setRepositories(projects); return;
+      } catch (reason) {
+        if (generation !== loadGeneration.current) return;
+        if (attempt < 2 && (reason.code === "SNAPSHOT_MISMATCH" || reason.status === 409)) continue;
+        throw reason;
+      }
+    }
   }
 
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, []);
@@ -373,17 +385,19 @@ export function App() {
   useEffect(() => { if (project && !projectOptions.some((option) => option.value === project)) setProject(null); }, [project, projectOptions]);
 
   const filtered = useMemo(() => filterPlans(allPlans, { lifecycle, workflow, project, query }), [allPlans, lifecycle, workflow, project, query]);
+  const selected = useMemo(() => selectedId ? allPlans.find((plan) => plan.id === selectedId) || null : null, [allPlans, selectedId]);
 
   async function refresh() { const startedAt = Date.now(); try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { const remaining = Math.max(0, 800 - (Date.now() - startedAt)); if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining)); setRefreshing(false); } }
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
-  function closePlan() { setSelected(null); restoreOverlayFocus(); }
+  function closePlan() { setSelectedId(null); restoreOverlayFocus(); }
   function closeHealth() { setHealthOpen(false); restoreOverlayFocus(); }
   const healthState = refreshing ? "loading" : refreshFailed ? "stale" : overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
   const healthColor = healthState === "healthy" ? "teal" : healthState === "loading" ? "gray" : "orange";
+  const refreshAvailable = overview?.nativeActions === true;
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell">
-      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing} aria-busy={refreshing} onClick={refresh}>Refresh</Button>{overview && <RefreshedTime value={overview.refreshedAt} />}</div></Group></div></Container></header>
+      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control" title={!refreshAvailable && overview ? "Refresh is available on the Planrock host machine only" : undefined}><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing || !refreshAvailable} aria-busy={refreshing} onClick={refresh}>Refresh</Button>{overview && <RefreshedTime value={overview.refreshedAt} />}</div></Group></div></Container></header>
       <Container size="xl" pt="xs" pb={{ base: "lg", sm: 36 }}>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
@@ -396,9 +410,9 @@ export function App() {
           <Divider my="md" />
             <div className="state-grid"><div><div className="filter-heading"><Text className="filter-label">State</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" size="xs" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><div className="filter-heading"><Text className="filter-label">Progress</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan progress" size="xs" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
         </Paper>
-        <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelected(plan); }} />
+        <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelectedId(plan.id); }} />
       </Stack>}
-      {selected && <PlanDrawer plan={selected} plans={allPlans} onClose={closePlan} />}
+      {selected && <PlanDrawer plan={selected} plans={allPlans} onClose={closePlan} nativeActionsAvailable={overview?.nativeActions === true} />}
       {healthOpen && overview && <HealthDrawer overview={overview} displayState={healthState} onClose={closeHealth} />}
       </Container>
     </div>

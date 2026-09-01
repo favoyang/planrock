@@ -1,10 +1,10 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("dashboard workflow", () => {
   it("resolves relative Markdown plan links across native path formats", () => {
@@ -84,6 +84,56 @@ describe("dashboard navigation", () => {
     expect(screen.queryByRole("button", { name: "healthy" })).toBeNull();
   });
 
+  it("retries and commits only a snapshot-consistent dashboard load", async () => {
+    let overviewCalls = 0;
+    const plan = { id: "consistent", projectId: "repo", projectName: "Repo", title: "Consistent plan", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 1, agentSessions: [], relativeFile: "plans/consistent.md", absolutePath: "/tmp/plans/consistent.md", fingerprint: "one", createdAt: "2026-09-01", updatedAt: "2026-09-01T06:00:00.000Z" };
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (url === "/api/overview") { overviewCalls += 1; const snapshotId = overviewCalls === 1 ? "stale-snapshot" : "current-snapshot"; return { ok: true, json: async () => ({ snapshotId, refreshedAt: "2026-09-01T00:00:00.000Z", incomplete: false, nativeActions: true, health: { state: "healthy" }, summary: { projects: 1, open: 1, closed: 0, invalid: 0 }, diagnostics: [] }) }; }
+      const collection = new URL(url, "http://localhost").searchParams.get("name");
+      return { ok: true, json: async () => ({ snapshotId: "current-snapshot", items: collection === "repositories" ? [{ id: "repo", displayName: "Repo", available: true, counts: { open: 1, closed: 0 } }] : collection === "openPlans" ? [plan] : [], nextCursor: null }) };
+    }));
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Consistent plan" })).toBeInTheDocument();
+    expect(overviewCalls).toBe(2);
+    expect(screen.getByRole("heading", { name: "Plans - 1 matching" })).toBeInTheDocument();
+  }, 30_000);
+
+  it("keeps an open detail drawer synchronized after refresh", async () => {
+    let currentPlan = { id: "refresh-plan", projectId: "repo", projectName: "Repo", title: "Original title", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 1, agentSessions: [], relativeFile: "plans/refresh.md", absolutePath: "/tmp/plans/refresh.md", fingerprint: "first", createdAt: "2026-08-30", updatedAt: "2026-08-30T06:00:00.000Z" };
+    let linkedPlan = { ...currentPlan, id: "linked-plan", title: "Linked original", relativeFile: "plans/linked.md", absolutePath: "/tmp/plans/linked.md", fingerprint: "linked-first" };
+    let currentSource = "## Goal\n\nOriginal body. Open the [linked plan](linked.md).";
+    let linkedSource = "## Goal\n\nLinked original body.";
+    const fetchMock = vi.fn(async (url) => {
+      if (url === "/api/refresh") return { ok: true, json: async () => ({}) };
+      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => new URL(url, "http://localhost").searchParams.get("id") === "linked-plan" ? linkedSource : currentSource };
+      if (url === "/api/overview") return { ok: true, json: async () => ({ snapshotId: "refresh-snapshot", refreshedAt: "2026-09-01T00:00:00.000Z", incomplete: false, nativeActions: true, health: { state: "healthy" }, summary: { projects: 1, open: 2, closed: 0, invalid: 0 }, diagnostics: [] }) };
+      const collection = new URL(url, "http://localhost").searchParams.get("name");
+      return { ok: true, json: async () => ({ snapshotId: "refresh-snapshot", items: collection === "repositories" ? [{ id: "repo", displayName: "Repo", available: true, counts: { open: 2, closed: 0 } }] : collection === "openPlans" ? [currentPlan, linkedPlan] : [], nextCursor: null }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Original title" }));
+    expect(await screen.findByRole("heading", { name: "Original title", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByText(/Original body/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "linked plan" }));
+    expect(await screen.findByRole("heading", { name: "Linked original", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByText("Linked original body.")).toBeInTheDocument();
+
+    currentPlan = { ...currentPlan, title: "Updated title", fingerprint: "second", updatedAt: "2026-09-01T06:00:00.000Z" };
+    linkedPlan = { ...linkedPlan, title: "Linked updated", fingerprint: "linked-second", updatedAt: "2026-09-01T07:00:00.000Z" };
+    currentSource = "## Goal\n\nFresh parent body. Open the [linked plan](linked.md).";
+    linkedSource = "## Goal\n\nFresh linked body.";
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByRole("heading", { name: "Updated title", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Linked updated", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByText("Fresh linked body.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Original title", level: 2 })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Linked original", level: 2 })).toBeNull();
+  }, 30_000);
+
   it("shows inline counts and filters open plans by derived workflow", async () => {
     let resolveRefresh;
     let rejectRefresh;
@@ -100,12 +150,12 @@ describe("dashboard navigation", () => {
     const fetchMock = vi.fn(async (url) => {
       if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
       if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)**, [`pending.md`](pending.md), and the [guide](../docs/guide.md).\n\n- Keep \\*literal\\*\n- Parent line\n  continues here\n  - Nested item\n  continuation after child\n- Reject [bad](javascript:bad)\n\n| Name | Count |\n| :--- | ---: |\n| Primary | 42 |\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n- [ ] Parent task\n  - [ ] Child task\n" };
-      if (String(url).startsWith("/api/markdown?")) return { ok: true, json: async () => ({ content: "# Guide\n\nPreview body.", absolutePath: "/tmp/docs/guide.md", relativeFile: "docs/guide.md" }) };
+      if (String(url).startsWith("/api/markdown?")) { const requested = new URL(url, "http://localhost").searchParams.get("path"); return { ok: true, json: async () => requested.endsWith("details.md") ? { content: "# Details\n\nNested preview body.", absolutePath: "/tmp/docs/details.md", relativeFile: "docs/details.md" } : { content: "# Guide\n\nPreview body. Open [Details](details.md).", absolutePath: "/tmp/docs/guide.md", relativeFile: "docs/guide.md" } }; }
       if (String(url).startsWith("/api/open-plan?")) return { ok: true, json: async () => ({ opened: true }) };
       if (String(url).startsWith("/api/open-chat?")) return { ok: true, json: async () => ({ opened: true }) };
-      if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
+      if (url === "/api/overview") return { ok: true, json: async () => ({ snapshotId: "main-snapshot", refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, nativeActions: true, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
-      return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
+      return { ok: true, json: async () => ({ snapshotId: "main-snapshot", items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
     });
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<App />);
@@ -145,7 +195,11 @@ describe("dashboard navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "guide" }));
     expect(await screen.findByRole("dialog", { name: "Markdown preview" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Guide" })).toBeInTheDocument();
-    expect(screen.getByText("Preview body.")).toBeInTheDocument();
+    expect(screen.getByText(/Preview body/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByText("Nested preview body.")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes(`source=${encodeURIComponent("/tmp/docs/guide.md")}`) && String(url).includes(encodeURIComponent("/tmp/docs/details.md")))).toBe(true);
     fireEvent.click(document.querySelectorAll(".mantine-Drawer-close")[1]);
     expect(screen.getByText("Keep *literal*")).toBeInTheDocument();
     expect(screen.getByText("Reject bad")).toBeInTheDocument();

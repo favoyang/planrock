@@ -8,6 +8,7 @@ const { execFileSync, spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 const packageJson = require("../package.json");
 const { CONTROL_PROTOCOL_VERSION } = require("../lib/constants");
+const { trustedLanAddress } = require("../lib/dashboard");
 
 const enabled = process.env.PLANROCK_SERVER_TESTS === "1";
 const root = path.resolve(__dirname, "..");
@@ -19,7 +20,7 @@ function runAsync(home, args, extraEnv = {}) { return new Promise((resolve) => {
 function birthIdentity(pid = process.pid) { if (process.platform === "linux") { const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return `linux:${stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]}`; } if (process.platform === "darwin") return `darwin:${execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim()}`; return null; }
 
 test("unrestricted dashboard supports multiple viewers, cross-origin requests, reuse, assertions, and shutdown", { skip: !enabled }, async () => {
-  const { base, home } = fixture(); const repo = path.join(base, "repo"); fs.mkdirSync(path.join(repo, "plans"), { recursive: true }); fs.mkdirSync(path.join(repo, "docs")); fs.writeFileSync(path.join(repo, "plans", "one.md"), "---\ntitle: <script>alert(1)</script>\nstate: open\nagent_sessions: [\"codex:019e2f18-930f-7052-999f-e3b083d9373f\"]\n---\n\n## Goal\n\nUnsafe <img src=x>.\n"); fs.writeFileSync(path.join(repo, "docs", "guide.md"), "# Guide\n\nRepository documentation.\n");
+  const { base, home } = fixture(); const repo = path.join(base, "repo"); fs.mkdirSync(path.join(repo, "plans"), { recursive: true }); fs.mkdirSync(path.join(repo, "docs")); fs.writeFileSync(path.join(repo, "plans", "one.md"), "---\ntitle: <script>alert(1)</script>\nstate: open\nagent_sessions: [\"codex:019e2f18-930f-7052-999f-e3b083d9373f\"]\n---\n\n## Goal\n\nUnsafe <img src=x>. Read the [guide](../docs/guide.md).\n"); fs.writeFileSync(path.join(repo, "docs", "guide.md"), "# Guide\n\nRepository documentation. Read [details](details.md).\n"); fs.writeFileSync(path.join(repo, "docs", "details.md"), "# Details\n\nNested documentation.\n"); fs.writeFileSync(path.join(repo, "docs", "private.md"), "# Private\n\nNot linked by the plan.\n");
   run(home, ["project", "add", repo, "--name", "Repo"]); const port = randomPort();
   try {
     const started = JSON.parse(run(home, ["dashboard", "start", "--port", String(port), "--json"]).stdout); assert.equal(started.action, "started"); assert.equal(started.url, `http://127.0.0.1:${port}/`); assert.equal(JSON.stringify(started).includes("capability"), false);
@@ -27,12 +28,24 @@ test("unrestricted dashboard supports multiple viewers, cross-origin requests, r
     const reused = JSON.parse(run(home, ["dashboard", "start", "--port", String(port), "--json"]).stdout); assert.equal(reused.action, "reused");
     const conflict = run(home, ["dashboard", "start", "--port", String(port + 1)], 1); assert.match(conflict.stderr, new RegExp(`already running on port ${port}`));
     const baseUrl = `http://127.0.0.1:${port}`;
-    const health = await fetch(`${baseUrl}/api/health`); assert.equal(health.status, 200); const healthBody = await health.json(); assert.equal(healthBody.instanceId, owner.instanceId); assert.equal(healthBody.controlProtocolVersion, CONTROL_PROTOCOL_VERSION); assert.equal(health.headers.get("access-control-allow-origin"), "*");
-    const overview = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "viewer.example", Origin: "http://viewer.example" } }); assert.equal(overview.status, 200); assert.equal((await overview.json()).summary.open, 1);
+    const health = await fetch(`${baseUrl}/api/health`); assert.equal(health.status, 200); const healthBody = await health.json(); assert.equal(healthBody.instanceId, owner.instanceId); assert.equal(healthBody.controlProtocolVersion, CONTROL_PROTOCOL_VERSION); assert.equal(health.headers.get("access-control-allow-origin"), null);
+    assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { Origin: "http://evil.example" } })).status, 403);
+    const reboundStatus = await new Promise((resolve, reject) => { const request = http.request({ host: "127.0.0.1", port, path: "/api/overview", headers: { Host: "attacker.example", Origin: "http://attacker.example" } }, (response) => { response.resume(); response.on("end", () => resolve(response.statusCode)); }); request.on("error", reject); request.end(); }); assert.equal(reboundStatus, 403);
+    assert.equal(trustedLanAddress("192.168.1.20"), true); assert.equal(trustedLanAddress("10.0.0.5"), true); assert.equal(trustedLanAddress("8.8.8.8"), false);
+    const lanAddress = Object.values(os.networkInterfaces()).flat().find((entry) => entry && !entry.internal && entry.family === "IPv4" && trustedLanAddress(entry.address));
+    if (lanAddress) {
+      const lanHost = `${lanAddress.address}:${port}`; const lanOverview = await new Promise((resolve, reject) => { const request = http.request({ host: "127.0.0.1", port, path: "/api/overview", headers: { Host: lanHost, Origin: `http://${lanHost}` } }, (response) => { const chunks = []; response.on("data", (chunk) => chunks.push(chunk)); response.on("end", () => resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) })); }); request.on("error", reject); request.end(); }); assert.equal(lanOverview.status, 200); assert.equal(lanOverview.body.nativeActions, false);
+      const remoteOverview = await new Promise((resolve, reject) => { const request = http.request({ host: lanAddress.address, port, path: "/api/overview", headers: { Host: lanHost, Origin: `http://${lanHost}` } }, (response) => { const chunks = []; response.on("data", (chunk) => chunks.push(chunk)); response.on("end", () => resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) })); }); request.on("error", reject); request.end(); }); assert.equal(remoteOverview.status, 200); assert.equal(remoteOverview.body.nativeActions, false);
+      const remoteRefresh = await new Promise((resolve, reject) => { const request = http.request({ host: lanAddress.address, port, path: "/api/refresh", method: "POST", headers: { Host: lanHost, Origin: `http://${lanHost}`, "Content-Type": "application/json", "Content-Length": 2 } }, (response) => { response.resume(); response.on("end", () => resolve(response.statusCode)); }); request.on("error", reject); request.end("{}"); }); assert.equal(remoteRefresh, 403);
+    }
+    const overview = await fetch(`${baseUrl}/api/overview`, { headers: { Origin: baseUrl } }); assert.equal(overview.status, 200); const overviewBody = await overview.json(); assert.equal(overviewBody.summary.open, 1); assert.equal(overviewBody.nativeActions, true);
     const plans = await fetch(`${baseUrl}/api/collection?name=openPlans`); const planId = (await plans.json()).items[0].id;
     const planSource = await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`); assert.equal(planSource.status, 200); assert.match(planSource.headers.get("content-type"), /^text\/plain/); assert.match(await planSource.text(), /Unsafe <img src=x>/);
     assert.equal((await fetch(`${baseUrl}/api/plan?id=missing`)).status, 404);
     const markdown = await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(fs.realpathSync.native(path.join(repo, "docs", "guide.md")))}`); assert.equal(markdown.status, 200); const markdownBody = await markdown.json(); assert.equal(markdownBody.relativeFile, "docs/guide.md"); assert.match(markdownBody.content, /Repository documentation/);
+    assert.equal((await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(path.join(repo, "docs", "details.md"))}`)).status, 404);
+    const nestedMarkdown = await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&source=${encodeURIComponent(markdownBody.absolutePath)}&path=${encodeURIComponent(fs.realpathSync.native(path.join(repo, "docs", "details.md")))}`); assert.equal(nestedMarkdown.status, 200); assert.match((await nestedMarkdown.json()).content, /Nested documentation/);
+    assert.equal((await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(path.join(repo, "docs", "private.md"))}`)).status, 404);
     assert.equal((await fetch(`${baseUrl}/api/markdown?id=${encodeURIComponent(planId)}&path=${encodeURIComponent(path.join(base, "outside.md"))}`)).status, 404);
     assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: "http://evil.example" }, body: "{}" })).status, 403);
     assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", body: "{}" })).status, 403);
@@ -51,15 +64,18 @@ test("unrestricted dashboard supports multiple viewers, cross-origin requests, r
     assert.equal((await fetch(`${baseUrl}/api/open-plan?id=${encodeURIComponent(planId)}`, { method: "POST", headers: { Origin: baseUrl }, body: "{}" })).status, 500); fs.writeFileSync(path.join(repo, "plans", "one.md"), indexedPlanContent);
     const originalPlans = path.join(repo, "plans-original"); const outsidePlans = path.join(base, "outside-plans"); fs.mkdirSync(outsidePlans); fs.writeFileSync(path.join(outsidePlans, "one.md"), "escaped source"); fs.renameSync(path.join(repo, "plans"), originalPlans); fs.symlinkSync(outsidePlans, path.join(repo, "plans"), "dir");
     assert.equal((await fetch(`${baseUrl}/api/plan?id=${encodeURIComponent(planId)}`)).status, 404); fs.unlinkSync(path.join(repo, "plans")); fs.renameSync(originalPlans, path.join(repo, "plans"));
-    const secondViewer = await fetch(`${baseUrl}/api/overview`, { headers: { Host: "another-viewer.example", Origin: "http://another-viewer.example" } }); assert.equal(secondViewer.status, 200);
-    const preflight = await fetch(`${baseUrl}/api/refresh`, { method: "OPTIONS", headers: { Origin: "http://viewer.example" } }); assert.equal(preflight.status, 204); assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
-    assert.equal((await fetch(`${baseUrl}/api/refresh`, { method: "POST", headers: { Host: "viewer.example", Origin: "http://viewer.example", "Content-Type": "application/json" }, body: "{}" })).status, 200);
+    const secondViewer = await fetch(`${baseUrl}/api/overview`, { headers: { Origin: baseUrl } }); assert.equal(secondViewer.status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/control/stop`, { method: "POST", body: "{}" })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/control/stop`, { method: "POST", headers: { Host: "viewer.example", Origin: "http://viewer.example" }, body: "{}" })).status, 403);
+    const preflight = await fetch(`${baseUrl}/api/refresh`, { method: "OPTIONS", headers: { Origin: "http://viewer.example" } }); assert.equal(preflight.status, 403); assert.equal(preflight.headers.get("access-control-allow-origin"), null);
+    assert.equal((await fetch(`${baseUrl}/api/refresh`, { method: "POST", headers: { Origin: "http://evil.example", "Content-Type": "application/json" }, body: "{}" })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/refresh`, { method: "POST", headers: { Origin: baseUrl, "Content-Type": "application/json" }, body: "{}" })).status, 200);
     fs.writeFileSync(path.join(repo, "plans", "two.md"), "---\ntitle: Watched plan\nstate: open\n---\n"); await new Promise((resolve) => setTimeout(resolve, 500));
     const watched = await fetch(`${baseUrl}/api/overview`); assert.equal((await watched.json()).summary.open, 2);
     const beforeFailure = JSON.parse(fs.readFileSync(path.join(home, ".agents", "planrock", "index.json"), "utf8")).snapshotId; fs.writeFileSync(path.join(home, ".agents", "planrock", "planrock.json"), "invalid-json", { mode: 0o600 });
     const failedRefresh = await fetch(`${baseUrl}/api/refresh`, { method: "POST", body: "{}" }); const failedBody = await failedRefresh.json(); assert.equal(failedBody.snapshotId, beforeFailure); assert.equal(failedBody.health.state, "stale");
     const staleOverview = await fetch(`${baseUrl}/api/overview`); assert.equal((await staleOverview.json()).health.state, "stale");
-    const html = await fetch(`${baseUrl}/`, { headers: { Host: "viewer.example" } }); assert.equal(html.status, 200); assert.match(html.headers.get("content-security-policy"), /frame-ancestors 'none'/); assert.doesNotMatch(await html.text(), /script>alert|Unsafe <img/);
+    const html = await fetch(`${baseUrl}/`); assert.equal(html.status, 200); assert.match(html.headers.get("content-security-policy"), /frame-ancestors 'none'/); assert.doesNotMatch(await html.text(), /script>alert|Unsafe <img/);
     assert.match(run(home, ["dashboard", "stop", "--port", String(port + 1)], 1).stderr, /assertion failed/);
     assert.match(run(home, ["dashboard", "status", "--port", String(port + 1)], 1).stderr, /assertion failed/);
     assert.equal(JSON.parse(run(home, ["dashboard", "status", "--json"]).stdout).running, true);
