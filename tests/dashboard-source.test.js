@@ -31,7 +31,8 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
   assert.match(source, /<MarkdownText className="plan-content" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanSource\}>/);
-  assert.match(source, /function renderInlineMarkdown/);
+  assert.match(source, /function renderMarkdownList/);
+  assert.match(styles, /\.refresh-control \{[^}]*width: 9rem;[^}]*font-variant-numeric: tabular-nums;/s);
   assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
   assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search" "toggle \.";[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
   assert.match(source, /className="filter-count"[^>]*>\{projectOptions\.length\} of \{repositories\.length\}/);
@@ -49,9 +50,13 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.dashboard-navbar \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
   assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
   assert.match(source, /codex:\/\/threads\/\$\{encodeURIComponent/);
-  assert.match(source, /className="path-text detail-link detail-meta-value" onClick=\{\(event\) => openPlanSource\(event, plan\)\}/);
+  assert.match(source, /href=\{fileHref\(plan\.absolutePath\)\}/);
+  assert.doesNotMatch(source, />Copy path</);
+  assert.match(source, /miw=\{112\} disabled=\{refreshing\} aria-busy=\{refreshing\}/);
+  assert.doesNotMatch(source, /loading=\{refreshing\}/);
   assert.match(source, /<PlanProgress plan=\{plan\} className="detail-progress" \/>/);
   assert.match(styles, /\.detail-meta-value \{ font-size: var\(--mantine-font-size-xs\);/);
+  assert.match(styles, /\.task-list-item \{[^}]*display: grid;[^}]*grid-template-columns: auto minmax\(0, 1fr\);/s);
   assert.match(source, /formatRelativeDate\(value\)/);
   assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);

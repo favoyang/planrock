@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, copyText, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
+import { App, copyText, fileHref, filterPlans, formatRelativeDate, resolvePlanPath, stripPlanFrontmatter, workflowState } from "./main";
 import { fetchAllPages } from "./pagination";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -15,6 +15,13 @@ describe("dashboard workflow", () => {
   it("removes frontmatter before rendering a full plan", () => {
     expect(stripPlanFrontmatter("---\ntitle: Test\n---\n\n## Goal\n\nBody")).toBe("## Goal\n\nBody");
     expect(stripPlanFrontmatter("## Goal\n\nBody")).toBe("## Goal\n\nBody");
+  });
+
+  it("creates system file URLs for native plan paths", () => {
+    expect(fileHref("/tmp/plans/active plan.md")).toBe("file:///tmp/plans/active%20plan.md");
+    expect(fileHref("/tmp/plans/active#plan?.md")).toBe("file:///tmp/plans/active%23plan%3F.md");
+    expect(fileHref("C:\\repo\\plans\\active.md")).toBe("file:///C:/repo/plans/active.md");
+    expect(fileHref("\\\\server\\share\\active plan.md")).toBe("file://server/share/active%20plan.md");
   });
 
   it("derives pending, active, and closed from authored state and progress signals", () => {
@@ -97,7 +104,7 @@ describe("dashboard navigation", () => {
     ];
     const fetchMock = vi.fn(async (url) => {
       if (url === "/api/refresh") return new Promise((resolve, reject) => { resolveRefresh = () => resolve({ ok: true, json: async () => ({}) }); rejectRefresh = reject; });
-      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Reject [bad](javascript:bad)\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n" };
+      if (String(url).startsWith("/api/plan?")) return { ok: true, text: async () => "---\ntitle: Active plan\n---\n\n## Goal\n\nRead **the [collector docs](https://example.com/docs)** and [`pending.md`](pending.md).\n\n- Keep \\*literal\\*\n- Parent line\n  continues here\n  - Nested item\n  continuation after child\n- Reject [bad](javascript:bad)\n\n## Steps\n\n- [x] Source body\n- [ ] Review result\n- [ ] Parent task\n  - [ ] Child task\n" };
       if (url === "/api/overview") return { ok: true, json: async () => ({ refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
@@ -120,10 +127,10 @@ describe("dashboard navigation", () => {
     expect(pendingTitleLine.querySelector(".priority")).toHaveTextContent("P2");
     expect(pendingTitleLine.querySelector(".workflow")).toHaveTextContent("Pending");
 
-    const activeTimestamp = screen.getByRole("button", { name: "Active: show full timestamp" });
+    const activeTimestamp = screen.getByRole("button", { name: /^Active: .*; show full timestamp$/ });
     expect(activeTimestamp).toHaveTextContent("Active");
     fireEvent.click(activeTimestamp);
-    expect(activeTimestamp).toHaveAccessibleName("Active: show relative time");
+    expect(activeTimestamp).toHaveAccessibleName(/^Active: Aug 31, 2026.*; show relative time$/);
     expect(activeTimestamp).toHaveTextContent("Aug 31, 2026");
 
     fireEvent.click(screen.getByRole("button", { name: "Open Active plan" }));
@@ -134,19 +141,31 @@ describe("dashboard navigation", () => {
     expect(screen.getByText("Keep *literal*")).toBeInTheDocument();
     expect(screen.getByText("Reject bad")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
-    const pathButton = screen.getByRole("button", { name: "/tmp/plans/active.md" });
-    expect(document.querySelector(".plan-content").compareDocumentPosition(pathButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parentItem = [...document.querySelectorAll(".plan-content > ul > li")].find((item) => item.textContent.includes("Parent line"));
+    expect(parentItem).toHaveTextContent("Parent line continues here");
+    expect(parentItem.querySelector("ul > li")).toHaveTextContent("Nested item");
+    expect(parentItem.textContent.indexOf("Nested item")).toBeLessThan(parentItem.textContent.indexOf("continuation after child"));
+    const pathLink = screen.getByRole("link", { name: "/tmp/plans/active.md" });
+    expect(document.querySelector(".plan-content").compareDocumentPosition(pathLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const planTasks = document.querySelectorAll(".plan-content .task-list-item input");
-    expect(planTasks).toHaveLength(2); expect(planTasks[0]).toBeChecked(); expect(planTasks[1]).not.toBeChecked();
-    expect(pathButton).toHaveClass("detail-meta-value");
-    fireEvent.click(pathButton);
-    expect(await screen.findByText(/Source body/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hide source" })).toBeInTheDocument();
+    expect(planTasks).toHaveLength(4); expect(planTasks[0]).toBeChecked(); expect(planTasks[1]).not.toBeChecked();
+    expect(planTasks[0]).toHaveAccessibleName("Source body"); expect(planTasks[1]).toHaveAccessibleName("Review result");
+    const parentTask = screen.getByRole("checkbox", { name: "Parent task" }).closest(".task-list-item");
+    expect(parentTask.querySelector(":scope > .task-text")).toHaveTextContent("Parent task");
+    expect(parentTask.querySelector(":scope > ul .task-text")).toHaveTextContent("Child task");
+    expect(pathLink).toHaveClass("detail-meta-value"); expect(pathLink).toHaveAttribute("href", "file:///tmp/plans/active.md");
+    const detailStats = document.querySelector(".detail-stats");
+    expect([...detailStats.querySelectorAll(".detail-stat")].find((item) => item.textContent.includes("Priority"))).toHaveTextContent("PriorityP1");
+    expect([...detailStats.querySelectorAll(".detail-stat")].find((item) => item.textContent.includes("State"))).toHaveTextContent("StateActive");
+    expect(screen.queryByText("Plan", { exact: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    const copyGoal = screen.getByRole("button", { name: "Copy goal command" });
+    expect(copyGoal.compareDocumentPosition(document.querySelector(".plan-content")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const sessionLink = screen.getByRole("link", { name: "codex:019e2f18-930f-7052-999f-e3b083d9373f" });
     expect(sessionLink).toHaveAttribute("href", "codex://threads/019e2f18-930f-7052-999f-e3b083d9373f"); expect(sessionLink).toHaveClass("detail-meta-value");
-    const detailUpdated = screen.getByRole("button", { name: "Updated: show full timestamp" });
+    const detailUpdated = screen.getByRole("button", { name: /^Updated: .*; show full timestamp$/ });
     fireEvent.click(detailUpdated);
-    expect(detailUpdated).toHaveAccessibleName("Updated: show relative time");
+    expect(detailUpdated).toHaveAccessibleName(/^Updated: Aug 31, 2026.*; show relative time$/);
     fireEvent.click(document.querySelector(".mantine-Drawer-close"));
 
     const projectInput = container.querySelector('input[aria-label="Project"]');
@@ -167,7 +186,7 @@ describe("dashboard navigation", () => {
     const refreshButton = [...container.querySelectorAll("button")].find((button) => button.textContent.includes("Refresh"));
     expect(healthButton).toHaveTextContent("healthy");
     fireEvent.click(refreshButton);
-    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); });
+    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); expect(refreshButton).toHaveTextContent("Refreshing…"); expect(refreshButton).toBeDisabled(); expect(refreshButton.querySelector(".mantine-Loader-root")).toBeNull(); });
     fireEvent.click(healthButton);
     expect(await screen.findByRole("heading", { name: "loading" })).toBeInTheDocument();
     resolveRefresh();

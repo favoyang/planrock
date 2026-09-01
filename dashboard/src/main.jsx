@@ -88,7 +88,8 @@ function RelativeTime({ label, value, className = "" }) {
   const [expanded, setExpanded] = useState(false);
   if (!value) return null;
   const full = formatFullDate(value);
-  return <UnstyledButton className={`relative-time ${className}`.trim()} data-expanded={expanded || undefined} title={full} aria-label={`${label}: ${expanded ? "show relative time" : "show full timestamp"}`} onClick={() => setExpanded((current) => !current)}><Text className="time-label">{label}</Text><Text className="time-value" size="sm" fw={550}><time dateTime={value}>{expanded ? full : formatRelativeDate(value)}</time></Text></UnstyledButton>;
+  const displayed = expanded ? full : formatRelativeDate(value);
+  return <UnstyledButton className={`relative-time ${className}`.trim()} data-expanded={expanded || undefined} title={full} aria-label={`${label}: ${displayed}; ${expanded ? "show relative time" : "show full timestamp"}`} onClick={() => setExpanded((current) => !current)}><Text className="time-label">{label}</Text><Text className="time-value" size="sm" fw={550}><time dateTime={value}>{displayed}</time></Text></UnstyledButton>;
 }
 
 function webHref(value) {
@@ -101,6 +102,20 @@ function planSourceHref(plan) {
 }
 
 function normalizePlanPath(value) { return String(value).replace(/\\/g, "/"); }
+
+export function fileHref(value) {
+  const normalized = normalizePlanPath(value);
+  const unc = normalized.match(/^\/\/([^/]+)(\/.*)?$/);
+  if (unc) {
+    const path = (unc[2] || "/").split("/").map(encodeURIComponent).join("/");
+    return `file://${unc[1]}${path}`;
+  }
+  const encoded = normalized
+    .split("/")
+    .map((part, index) => (index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)))
+    .join("/");
+  return `file://${normalized.startsWith("/") ? "" : "/"}${encoded}`;
+}
 
 export function resolvePlanPath(value, basePath) {
   const target = normalizePlanPath(value).split(/[?#]/, 1)[0]; const base = normalizePlanPath(basePath);
@@ -141,15 +156,42 @@ function renderInlineMarkdown(value, context, keyPrefix) {
   flush(); return nodes;
 }
 
+function listMarker(line) {
+  const match = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)/);
+  return match ? { indent: match[1].replace(/\t/g, "    ").length, ordered: /\d/.test(match[2]), content: match[3] } : null;
+}
+
+function renderMarkdownList(lines, start, context, keyPrefix) {
+  const root = listMarker(lines[start]); const items = []; let index = start;
+  while (index < lines.length) {
+    const marker = listMarker(lines[index]);
+    if (!marker || marker.indent !== root.indent || marker.ordered !== root.ordered) break;
+    const itemStart = index; const segments = [{ type: "text", lines: [marker.content] }]; index += 1;
+    while (index < lines.length) {
+      const next = listMarker(lines[index]);
+      if (next?.indent === root.indent) break;
+      if (next && next.indent > root.indent) { const child = renderMarkdownList(lines, index, context, `${keyPrefix}-${itemStart}`); segments.push({ type: "node", node: child.node }); index = child.index; continue; }
+      if (!lines[index].trim()) { index += 1; continue; }
+      const indent = lines[index].match(/^\s*/)[0].replace(/\t/g, "    ").length;
+      if (indent > root.indent && !/^\s*(?:#{1,6}\s|```)/.test(lines[index])) { const last = segments.at(-1); if (last.type === "text") last.lines.push(lines[index].trim()); else segments.push({ type: "text", lines: [lines[index].trim()] }); index += 1; continue; }
+      break;
+    }
+    const firstText = segments.find((segment) => segment.type === "text"); const task = root.ordered ? null : firstText?.lines.join(" ").match(/^\[([ xX])\]\s+(.+)/);
+    const children = segments.map((segment, segmentIndex) => segment.type === "node" ? segment.node : task ? <span className="task-text" key={`${keyPrefix}-${itemStart}-text-${segmentIndex}`}>{renderInlineMarkdown(segment === firstText ? task[2] : segment.lines.join(" "), context, `${keyPrefix}-${itemStart}-${segmentIndex}`)}</span> : <React.Fragment key={`${keyPrefix}-${itemStart}-text-${segmentIndex}`}>{renderInlineMarkdown(segment.lines.join(" "), context, `${keyPrefix}-${itemStart}-${segmentIndex}`)}</React.Fragment>);
+    items.push(<li className={task ? "task-list-item" : undefined} key={`${keyPrefix}-${itemStart}`}>{task && <input type="checkbox" aria-label={task[2]} checked={task[1].toLocaleLowerCase() === "x"} disabled />}{children}</li>);
+  }
+  const List = root.ordered ? "ol" : "ul";
+  return { node: <List className={items.some((item) => item.props.className) ? "task-list" : undefined} key={`${keyPrefix}-${start}`}>{items}</List>, index };
+}
+
 function MarkdownText({ children, className, basePath, plansByPath, onOpenPlan }) {
   const lines = String(children || "").split("\n"); const blocks = []; const context = { basePath, plansByPath, onOpenPlan }; let index = 0;
-  const blockStart = (line) => !line.trim() || /^\s*(?:[-*+] |\d+\. |#{1,4} |```)/.test(line);
+  const blockStart = (line) => !line.trim() || /^\s*(?:[-*+] |\d+\. |#{1,6} |```)/.test(line);
   while (index < lines.length) {
     if (!lines[index].trim()) { index += 1; continue; }
     if (lines[index].trim().startsWith("```")) { const language = lines[index].trim().slice(3); const code = []; index += 1; while (index < lines.length && !lines[index].trim().startsWith("```")) { code.push(lines[index]); index += 1; } index += 1; blocks.push(<pre key={`code-${index}`}><code data-language={language || undefined}>{code.join("\n")}</code></pre>); continue; }
-    const unordered = lines[index].match(/^\s*[-*+]\s+(.+)/); const ordered = lines[index].match(/^\s*\d+\.\s+(.+)/);
-    if (unordered || ordered) { const items = []; const pattern = unordered ? /^\s*[-*+]\s+(.+)/ : /^\s*\d+\.\s+(.+)/; while (index < lines.length) { const match = lines[index].match(pattern); if (!match) break; const task = unordered ? match[1].match(/^\[([ xX])\]\s+(.+)/) : null; items.push(<li className={task ? "task-list-item" : undefined} key={`${index}`}>{task && <input type="checkbox" checked={task[1].toLocaleLowerCase() === "x"} disabled />}{renderInlineMarkdown(task ? task[2] : match[1], context, `item-${index}`)}</li>); index += 1; } const List = unordered ? "ul" : "ol"; blocks.push(<List className={items.some((item) => item.props.className) ? "task-list" : undefined} key={`list-${index}`}>{items}</List>); continue; }
-    const heading = lines[index].match(/^(#{1,4})\s+(.+)/); if (heading) { const Heading = `h${Math.min(heading[1].length + 2, 6)}`; blocks.push(<Heading key={`heading-${index}`}>{renderInlineMarkdown(heading[2], context, `heading-${index}`)}</Heading>); index += 1; continue; }
+    if (listMarker(lines[index])) { const list = renderMarkdownList(lines, index, context, "list"); blocks.push(list.node); index = list.index; continue; }
+    const heading = lines[index].match(/^(#{1,6})\s+(.+)/); if (heading) { const Heading = `h${heading[1].length}`; blocks.push(<Heading key={`heading-${index}`}>{renderInlineMarkdown(heading[2], context, `heading-${index}`)}</Heading>); index += 1; continue; }
     const paragraph = [lines[index].trim()]; index += 1; while (index < lines.length && !blockStart(lines[index])) { paragraph.push(lines[index].trim()); index += 1; } blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(" "), context, `paragraph-${index}`)}</p>);
   }
   return <div className={className}>{blocks}</div>;
@@ -225,17 +267,17 @@ function PlanDrawer({ plan, plans, onClose }) {
   }
   return <Drawer opened onClose={onClose} title="Plan details" position="right" size="lg">
     <Stack gap="md">
-      <div><Group gap="xs"><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></Group><Title className="detail-title" order={2} mt="xs">{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
+      <div><Title className="detail-title" order={2}>{plan.title}</Title><Text size="sm" c="dimmed">{plan.projectName}</Text></div>
       <PlanProgress plan={plan} className="detail-progress" />
       <Divider />
-      <Group className="detail-times" align="flex-start"><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
-      <section><Text className="detail-label">Plan</Text>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{planContent}</MarkdownText>}</section>
-      <div><Text className="detail-label">Plan path</Text><UnstyledButton className="path-text detail-link detail-meta-value" onClick={(event) => openPlanSource(event, plan)} title="Show raw plan source">{plan.absolutePath}</UnstyledButton></div>
+      <Group className="detail-stats" align="flex-start"><div className="detail-stat"><Text className="time-label">Priority</Text><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div><div className="detail-stat"><Text className="time-label">State</Text><Badge className={`workflow ${workflow}`} variant="light">{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Badge></div><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
+      <Group><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
+      {copyStatus && <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>}
+      <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanSource}>{planContent}</MarkdownText>}</section>
+      <div><Text className="detail-label">Plan path</Text><Text component="a" className="path-text detail-link detail-meta-value" href={fileHref(plan.absolutePath)} target="_blank" rel="noreferrer" title="Open plan in the system file handler">{plan.absolutePath}</Text></div>
       {sourcePlan && <Paper className="plan-source" withBorder p="sm" aria-live="polite"><Group justify="space-between" gap="sm" wrap="nowrap"><Text size="sm" fw={650} truncate>{sourcePlan.relativeFile}</Text><Button size="compact-xs" variant="subtle" onClick={() => setSourcePlan(null)}>Hide source</Button></Group>{sourceLoading && <Text size="sm" c="dimmed">Loading source…</Text>}{sourceError && <Text role="alert" size="sm" c="red">{sourceError}</Text>}{sourceText && <pre><code>{sourceText}</code></pre>}</Paper>}
       {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => { const href = sessionHref(session); return href ? <Text component="a" key={session} size="xs" className="path-text detail-link detail-meta-value" href={href} title="Open Codex task">{session}</Text> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>; })}</Stack></div>}
       {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
-      <Group grow><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button><Button variant="default" onClick={() => copy("Path", plan.absolutePath)}>Copy path</Button></Group>
-      <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>
     </Stack>
   </Drawer>;
 }
@@ -292,7 +334,7 @@ export function App() {
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell">
-      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" loading={refreshing} onClick={refresh}>Refresh</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></div></Container></header>
+      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control"><Button variant="default" miw={112} disabled={refreshing} aria-busy={refreshing} onClick={refresh}>{refreshing ? "Refreshing…" : "Refresh"}</Button>{overview && <Text size="xs" c="dimmed">Last refreshed<br />{new Date(overview.refreshedAt).toLocaleString()}</Text>}</div></Group></div></Container></header>
       <Container size="xl" pt="xs" pb={{ base: "lg", sm: 36 }}>
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
       {overview && <Stack gap="lg">
