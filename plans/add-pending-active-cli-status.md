@@ -1,8 +1,9 @@
 ---
 title: Add pending and active CLI status
-state: open
+state: closed
 priority: P1
 created_at: 2026-09-02
+closed_at: 2026-09-02
 agent_sessions:
   - codex:01a06025-07b1-73b2-98f9-6892153a6dc7
 ---
@@ -25,4 +26,12 @@ Expose the dashboard's pending and active plan semantics through the repository-
 - [x] Update status output, JSON, help, README, skill guidance, and packaged/generated artifacts.
 - [x] Add domain, CLI, compatibility, malformed-input, sorting, JSON, and dashboard parity tests.
 - [x] Run formatting/build/type-equivalent checks, tests, package validation, and independent review until clean.
-- [ ] Close this plan, commit, push, open and merge the PR, verify release publication, update the installed skill/package, and clean up.
+- [x] Merge the feature PR, verify release publication, and update the installed skill and CLI package.
+
+## Delivery
+
+- Feature: https://github.com/favoyang/planrock/pull/21
+- Release: `v1.5.0` / `@favoyang/planrock@1.5.0`
+- Installed: global Skills CLI copy and mise-managed CLI both refreshed and verified.
+
+Repository worktree and branch cleanup follows this closure commit under the repository delivery policy.
