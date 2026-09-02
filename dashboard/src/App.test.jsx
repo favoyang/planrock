@@ -27,15 +27,16 @@ describe("dashboard workflow", () => {
     expect(workflowState({ state: "closed", checklistDone: 0, agentSessions: [] })).toBe("closed");
   });
 
-  it("filters the open lifecycle by its derived workflow", () => {
+  it("filters pending, active, open, and closed views by shared workflow semantics", () => {
     const plans = [
       { state: "open", checklistDone: 0, agentSessions: [], title: "Pending", projectName: "Repo", relativeFile: "pending.md" },
       { state: "open", checklistDone: 1, agentSessions: [], title: "Active", projectName: "Repo", relativeFile: "active.md" },
       { state: "closed", checklistDone: 0, agentSessions: [], title: "Closed", projectName: "Repo", relativeFile: "closed.md" },
     ];
-    expect(filterPlans(plans, { lifecycle: "open", workflow: "pending", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending"]);
-    expect(filterPlans(plans, { lifecycle: "open", workflow: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Active"]);
-    expect(filterPlans(plans, { lifecycle: "closed", workflow: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Closed"]);
+    expect(filterPlans(plans, { view: "pending", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending"]);
+    expect(filterPlans(plans, { view: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Active"]);
+    expect(filterPlans(plans, { view: "open", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending", "Active"]);
+    expect(filterPlans(plans, { view: "closed", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Closed"]);
   });
 
   it("formats plan activity as relative time", () => {
@@ -126,6 +127,7 @@ describe("dashboard navigation", () => {
     linkedPlan = { ...linkedPlan, title: "Linked updated", fingerprint: "linked-second", updatedAt: "2026-09-01T07:00:00.000Z" };
     currentSource = "## Goal\n\nFresh parent body. Open the [linked plan](linked.md).";
     linkedSource = "## Goal\n\nFresh linked body.";
+    fireEvent.click(screen.getByRole("button", { name: "healthy" }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(await screen.findByRole("heading", { name: "Updated title", level: 2 })).toBeInTheDocument();
@@ -135,7 +137,7 @@ describe("dashboard navigation", () => {
     expect(screen.queryByRole("heading", { name: "Linked original", level: 2 })).toBeNull();
   }, 90_000);
 
-  it("shows inline counts and filters open plans by derived workflow", async () => {
+  it("shows the compact view selector and the dedicated index-health refresh surface", async () => {
     let resolveRefresh;
     let rejectRefresh;
     const repositories = [
@@ -154,7 +156,7 @@ describe("dashboard navigation", () => {
       if (String(url).startsWith("/api/markdown?")) { const requested = new URL(url, "http://localhost").searchParams.get("path"); return { ok: true, json: async () => requested.endsWith("details.md") ? { content: "# Details\n\nNested preview body.", absolutePath: "/tmp/docs/details.md", relativeFile: "docs/details.md" } : { content: "# Guide\n\nPreview body. Open [Details](details.md).", absolutePath: "/tmp/docs/guide.md", relativeFile: "docs/guide.md" } }; }
       if (String(url).startsWith("/api/open-plan?")) return { ok: true, json: async () => ({ opened: true }) };
       if (String(url).startsWith("/api/open-chat?")) return { ok: true, json: async () => ({ opened: true }) };
-      if (url === "/api/overview") return { ok: true, json: async () => ({ snapshotId: "main-snapshot", refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, nativeActions: true, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 0 }, diagnostics: [] }) };
+      if (url === "/api/overview") return { ok: true, json: async () => ({ schemaVersion: 2, snapshotId: "main-snapshot", refreshedAt: "2026-08-30T00:00:00.000Z", incomplete: false, nativeActions: true, health: { state: "healthy" }, summary: { projects: 3, open: 2, closed: 1, invalid: 1 }, diagnostics: [], latestScan: { schemaVersion: 1, startedAt: "2026-08-30T00:00:00.000Z", finishedAt: "2026-08-30T00:00:01.000Z", durationMs: 1000, trigger: "startup", outcome: "success", snapshotId: "main-snapshot", diagnostics: [{ severity: "error", code: "PLAN_STATE_INVALID", message: "Unsupported plan state", project: "Active repo", relativeFile: "plans/broken.md" }, { severity: "warning", code: "PROJECT_ROOT_UNAVAILABLE", message: "Project root unavailable", project: "Missing repo" }], invalidPlans: [{ project: "Active repo", relativeFile: "plans/broken.md", diagnostics: [{ severity: "error", code: "PLAN_STATE_INVALID", message: "Unsupported plan state" }] }] } }) };
       const collection = new URL(url, "http://localhost").searchParams.get("name");
       return { ok: true, json: async () => ({ snapshotId: "main-snapshot", items: collection === "repositories" ? repositories : collection === "openPlans" ? plans.filter((plan) => plan.state === "open") : plans.filter((plan) => plan.state === "closed"), nextCursor: null }) };
     });
@@ -165,10 +167,9 @@ describe("dashboard navigation", () => {
     expect(container).toHaveTextContent(`v${packageJson.version}`);
     const refreshedTime = screen.getByRole("button", { name: /^Refreshed .*; show full timestamp$/ });
     expect(refreshedTime).toHaveTextContent(/^Refreshed .* ago$/); fireEvent.click(refreshedTime); expect(refreshedTime).toHaveAccessibleName(/^Aug 30, 2026.*; show relative time$/);
-    expect(container.textContent).toContain("Open 2");
-    expect(container.textContent).toContain("Closed 1");
-    expect(container.textContent).toContain("Pending 1");
-    expect(container.textContent).toContain("Active 1");
+    const viewControl = screen.getByRole("radiogroup", { name: "Plan view" });
+    expect(viewControl).toHaveTextContent("PendingActiveOpenClosed");
+    expect(viewControl).not.toHaveTextContent(/Open 2|Closed 1|Pending 1|Active 1/);
     expect(container.textContent).toContain("Pending plan");
     expect(container.textContent).toContain("Active plan");
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked();
@@ -255,22 +256,27 @@ describe("dashboard navigation", () => {
     expect(projectInput.value).not.toContain("12 open");
 
     const healthButton = container.querySelector(".health-button");
-    const refreshButton = [...container.querySelectorAll("button")].find((button) => button.textContent.includes("Refresh"));
     expect(healthButton).toHaveTextContent("healthy");
-    fireEvent.click(refreshButton);
-    await waitFor(() => { expect(healthButton).toHaveTextContent("loading"); expect(healthButton).toBeEnabled(); expect(refreshButton).toHaveTextContent("Refresh"); expect(refreshButton).toHaveClass("refreshing"); expect(refreshButton).toBeDisabled(); expect(refreshButton.querySelector(".refresh-indicator")).toBeNull(); expect(refreshButton.querySelector(".mantine-Loader-root")).toBeNull(); });
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     fireEvent.click(healthButton);
-    expect(await screen.findByRole("heading", { name: "loading" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Index health" })).toBeInTheDocument();
+    const backButton = screen.getByRole("button", { name: "Back to plans" }); await waitFor(() => expect(backButton).toHaveFocus());
+    const healthStatus = screen.getByRole("status", { name: "Index health: healthy" }); expect(healthStatus).toHaveTextContent("healthy"); expect(screen.queryByRole("button", { name: "healthy" })).toBeNull();
+    expect(screen.queryByText(/invalid$/)).toBeNull(); expect(screen.queryByText(/diagnostics shown/)).toBeNull();
+    expect(screen.getByText("Invalid plans")).toBeInTheDocument(); expect(screen.getAllByText("PLAN_STATE_INVALID")).toHaveLength(1); expect(screen.getAllByText("Active repo · plans/broken.md")).toHaveLength(1);
+    expect(screen.getByText("Scan diagnostics")).toBeInTheDocument(); expect(screen.getByText("PROJECT_ROOT_UNAVAILABLE")).toBeInTheDocument(); expect(screen.getByText("Missing repo")).toBeInTheDocument();
+    const refreshButton = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refreshButton);
+    await waitFor(() => { expect(healthStatus).toHaveTextContent("loading"); expect(refreshButton).toHaveTextContent("Refresh"); expect(refreshButton).toHaveClass("refreshing"); expect(refreshButton).toBeDisabled(); expect(refreshButton.querySelector(".refresh-indicator")).toBeNull(); expect(refreshButton.querySelector(".mantine-Loader-root")).toBeNull(); });
     resolveRefresh();
-    await waitFor(() => { expect(healthButton).toHaveTextContent("healthy"); expect(healthButton).toBeEnabled(); });
-    await waitFor(() => expect(screen.getByRole("heading", { name: "healthy" })).toBeInTheDocument());
-    fireEvent.click(document.querySelector(".mantine-Drawer-close"));
+    await waitFor(() => expect(healthStatus).toHaveTextContent("healthy"));
 
     fireEvent.click(refreshButton);
-    await waitFor(() => expect(healthButton).toHaveTextContent("loading"));
+    await waitFor(() => expect(healthStatus).toHaveTextContent("loading"));
     rejectRefresh(new Error("Refresh unavailable"));
-    await waitFor(() => { expect(healthButton).toHaveTextContent("stale"); expect(healthButton).toBeEnabled(); });
+    await waitFor(() => expect(healthStatus).toHaveTextContent("stale"));
     expect(container.querySelector('[role="alert"]')).toHaveTextContent("Refresh unavailable");
+    fireEvent.click(backButton); await waitFor(() => expect(container.querySelector(".health-button")).toHaveFocus());
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
   }, 300_000);

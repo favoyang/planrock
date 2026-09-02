@@ -13,8 +13,8 @@ const { DEFAULT_PORT, STORAGE_DIR } = require("../lib/constants");
 
 test("dashboard uses Mantine 9 with the accepted accessible information architecture", () => {
   assert.match(source, /from "@mantine\/core"/); assert.match(source, /<MantineProvider theme=\{theme\} defaultColorScheme="auto">/);
-  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Only projects with open plans", "Registry and health", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
-  assert.match(source, /aria-label="Plan lifecycle"/); assert.match(source, /aria-label="Plan progress"/);
+  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Only projects with open plans", "Index health", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
+  assert.match(source, /aria-label="Plan view"/); assert.doesNotMatch(source, /aria-label="Plan lifecycle"|aria-label="Plan progress"/);
   assert.match(source, /useId\(\)/); assert.match(source, /overview\.health\?\.state/);
   assert.match(source, /workflowState\(plan\)/);
   assert.match(source, /openCount: repository\.counts\.open/);
@@ -30,21 +30,27 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /dark.*\.health-button:not\(\.healthy, \.loading\) \.health-dot \{ background: var\(--mantine-color-orange-4\); \}/);
   assert.match(styles, /\.plan-title-line h3 \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/s);
   assert.match(styles, /\.detail-title \{ font-size: 1\.125rem; font-weight: 650; line-height: 1\.4; \}/);
-  assert.match(source, /<MarkdownText className="plan-content" basePath=\{plan\.absolutePath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanOverlay\} onOpenMarkdown=\{openMarkdownOverlay\}>/);
+  assert.match(source, /<MarkdownText className="plan-content" basePath=\{planPath\} plansByPath=\{plansByPath\} onOpenPlan=\{openPlanOverlay\} onOpenMarkdown=\{openMarkdownOverlay\}>/);
+  assert.match(source, /plan\.projectName\} · \{plan\.relativeFile/);
   assert.match(source, /function renderMarkdownList/);
   assert.match(source, /function renderMarkdownTable/);
   assert.match(styles, /\.refresh-control \{[^}]*justify-items: end;[^}]*font-variant-numeric: tabular-nums;/s);
   assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
-  assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search" "toggle \.";[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
+  assert.match(styles, /\.content-shell \{[^}]*1200px[^}]*padding-inline: 32px;/s);
+  assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search" "toggle \.";[^}]*grid-template-columns: minmax\(0, 2fr\) minmax\(0, 3fr\);/s);
   assert.match(source, /className="filter-count"[^>]*>\{projectOptions\.length\} of \{repositories\.length\}/);
-  assert.equal((source.match(/<SegmentedControl[^>]*size="xs"/g) || []).length, 2);
-  assert.match(styles, /\.state-grid \.mantine-SegmentedControl-label \{ font-size: var\(--mantine-font-size-xs\); \}/);
-  assert.doesNotMatch(styles, /\.state-grid \.mantine-SegmentedControl-label \{[^}]*padding/s);
+  assert.equal((source.match(/<SegmentedControl[^>]*size="xs"/g) || []).length, 1);
+  assert.match(styles, /\.view-selector \.mantine-SegmentedControl-label \{[^}]*padding-inline: 4px;[^}]*font-size: var\(--mantine-font-size-xs\);/s);
   assert.match(styles, /\.plan-date\[data-expanded\] \{ position: static; display: block; width: 100%;/);
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-row-button \{ grid-template-columns: minmax\(260px, 1fr\) minmax\(180px, 250px\); \}/);
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-identity \{ padding-right: 0; \}/);
   assert.match(source, /className="refresh-control"/); assert.doesNotMatch(source, /refresh-meta/);
+  assert.match(source, /page === "home" && overview && <RefreshedTime/);
+  assert.match(source, /page === "health" && <IndexHealth/);
+  assert.doesNotMatch(source, /invalid\} invalid|diagnostics shown|Current state|Registry and health/);
   assert.match(source, /const healthState = refreshing \? "loading" : refreshFailed \? "stale"/);
+  assert.match(source, /Latest scan health is unavailable\./);
+  assert.match(source, /scan && !hasIssues/);
   assert.match(source, /className="dashboard-navbar"/);
   assert.match(styles, /\.dashboard-navbar \{ border-bottom: 1px solid var\(--mantine-color-gray-3\); \}/);
   assert.match(styles, /dark.*\.dashboard-navbar \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
@@ -70,8 +76,9 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.detail-meta-value \{ font-size: var\(--mantine-font-size-xs\);/);
   assert.match(styles, /\.task-list-item \{[^}]*display: grid;[^}]*grid-template-columns: auto minmax\(0, 1fr\);/s);
   assert.match(source, /formatRelativeDate\(value\)/);
-  assert.match(source, /Use plan reference: \$\{plan\.absolutePath\}/);
+  assert.match(source, /Use plan reference: \$\{nativeActionsAvailable \? plan\.absolutePath :/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);
+  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*grid-template-areas: "project search" "toggle toggle"/);
 });
 
 test("release commits version manifests and the version-dependent dashboard build", () => {
