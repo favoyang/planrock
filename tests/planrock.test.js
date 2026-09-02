@@ -316,6 +316,53 @@ test("status --working-dir emits workingDir JSON and checklist counts", () => {
   assert.deepEqual(report.recentOpenPlans[0].agentSessions, []);
 });
 
+test("pending, active, open, and status share dashboard workflow semantics", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(workingDir, "pending-zero.md", { title: "Pending Zero", state: "open", created_at: "2026-05-17", priority: "P1" }, "No checklist yet.");
+  writePlan(workingDir, "pending-checklist.md", { title: "Pending Checklist", state: "open", created_at: "2026-05-18", priority: "P2" }, "- [ ] Start");
+  writePlan(workingDir, "active-progress.md", { title: "Active Progress", state: "open", created_at: "2026-05-16", priority: "P0" }, "- [x] Started\n- [ ] Finish");
+  writePlan(workingDir, "active-session.md", { title: "Active Session", state: "open", created_at: "2026-05-19", priority: "P1", agent_sessions: ["codex:session"] }, "- [ ] Start");
+  writePlan(workingDir, "active-complete.md", { title: "Active Complete", state: "open", created_at: "2026-05-20", priority: "P2" }, "- [x] Done");
+  writePlan(workingDir, "closed.md", { title: "Closed", state: "closed", created_at: "2026-05-10", closed_at: "2026-05-21", agent_sessions: ["codex:session"] }, "- [ ] Intentionally closed early");
+  fs.writeFileSync(path.join(workingDir, "plans", "missing-state.md"), "---\ntitle: Missing State\n---\n");
+  fs.writeFileSync(path.join(workingDir, "plans", "malformed.md"), "---\ntitle: Malformed\nstate: open\n");
+
+  const pending = JSON.parse(runPlanrock(["pending", "--working-dir", workingDir, "--json"]).stdout);
+  const active = JSON.parse(runPlanrock(["active", "--working-dir", workingDir, "--json"]).stdout);
+  const open = JSON.parse(runPlanrock(["open", "--working-dir", workingDir, "--json"]).stdout);
+  const status = JSON.parse(runPlanrock(["status", "--working-dir", workingDir, "--json"]).stdout);
+
+  assert.deepEqual(pending.pendingPlans.map((plan) => plan.title), ["Pending Zero", "Pending Checklist"]);
+  assert.deepEqual(active.activePlans.map((plan) => plan.title), ["Active Progress", "Active Session", "Active Complete"]);
+  assert.deepEqual(open.openPlans.map((plan) => plan.title), ["Active Progress", "Active Session", "Pending Zero", "Active Complete", "Pending Checklist"]);
+  assert.deepEqual(status.summary, { open: 5, pending: 2, active: 3, closed: 1, invalid: 2 });
+  assert.deepEqual(status.recentOpenPlans, open.openPlans);
+  assert.deepEqual(status.recentPendingPlans, pending.pendingPlans);
+  assert.deepEqual(status.recentActivePlans, active.activePlans);
+  assert.deepEqual(status.invalidPlans.map((plan) => plan.file), ["plans/malformed.md", "plans/missing-state.md"]);
+});
+
+test("pending and active preserve time sorting and human status sections", () => {
+  const workingDir = makeWorkingDir();
+  writePlan(workingDir, "old-pending.md", { title: "Old Pending", state: "open", created_at: "2026-05-10", priority: "P0" }, "- [ ] Start");
+  writePlan(workingDir, "new-pending.md", { title: "New Pending", state: "open", created_at: "2026-05-20", priority: "P4" }, "- [ ] Start");
+  writePlan(workingDir, "old-active.md", { title: "Old Active", state: "open", created_at: "2026-05-11", priority: "P0" }, "- [x] Start");
+  writePlan(workingDir, "new-active.md", { title: "New Active", state: "open", created_at: "2026-05-21", priority: "P4" }, "- [x] Start");
+
+  const pending = JSON.parse(runPlanrock(["pending", "--working-dir", workingDir, "--sort=time", "--json"]).stdout);
+  const active = JSON.parse(runPlanrock(["active", "--working-dir", workingDir, "--sort=time", "--json"]).stdout);
+  assert.deepEqual(pending.pendingPlans.map((plan) => plan.title), ["New Pending", "Old Pending"]);
+  assert.deepEqual(active.activePlans.map((plan) => plan.title), ["New Active", "Old Active"]);
+
+  const human = runPlanrock(["status", "--working-dir", workingDir]);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /Open:\s+4/);
+  assert.match(human.stdout, /Pending:\s+2/);
+  assert.match(human.stdout, /Active:\s+2/);
+  assert.match(human.stdout, /Pending Plans \(top 10\)/);
+  assert.match(human.stdout, /Active Plans \(top 10\)/);
+});
+
 test("--workspace remains a compatibility alias for --working-dir", () => {
   const workingDir = makeWorkingDir();
   writePlan(
@@ -695,7 +742,7 @@ test("human output escapes terminal controls from plan frontmatter", () => {
   assert.match(result.stdout, /codex:session\\x1b/);
 });
 
-test("JSON output includes agent sessions field only", () => {
+test("JSON output preserves existing plan fields and adds workflow", () => {
   const workingDir = makeWorkingDir();
   writePlan(
     workingDir,
@@ -725,7 +772,9 @@ test("JSON output includes agent sessions field only", () => {
     "checklistDone",
     "checklistTotal",
     "completionPercent",
+    "workflow",
   ]);
+  assert.equal(report.openPlans[0].workflow, "active");
   assert.equal(report.openPlans[0].priority, "P1");
   assert.deepEqual(report.openPlans[0].agentSessions, [
     "codex:019e2f18-930f-7052-999f-e3b083d9373f",
@@ -784,6 +833,7 @@ test("legacy agent_session is read as one agent session", () => {
   assert.deepEqual(report.openPlans[0].agentSessions, [
     "codex:019e2f18-930f-7052-999f-e3b083d9373f",
   ]);
+  assert.equal(report.openPlans[0].workflow, "active");
 });
 
 test("agent_sessions empty inline list is read as no agent sessions", () => {
@@ -806,4 +856,5 @@ test("agent_sessions empty inline list is read as no agent sessions", () => {
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.deepEqual(report.openPlans[0].agentSessions, []);
+  assert.equal(report.openPlans[0].workflow, "pending");
 });

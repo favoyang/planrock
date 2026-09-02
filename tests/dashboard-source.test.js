@@ -48,7 +48,8 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(source, /className="dashboard-navbar"/);
   assert.match(styles, /\.dashboard-navbar \{ border-bottom: 1px solid var\(--mantine-color-gray-3\); \}/);
   assert.match(styles, /dark.*\.dashboard-navbar \{ border-bottom-color: var\(--mantine-color-dark-5\); \}/);
-  assert.match(source, /plan\.checklistDone > 0 \|\| \(plan\.agentSessions\?\.length \|\| 0\) > 0/);
+  assert.match(source, /import planStatus from "\.\.\/\.\.\/lib\/plan-status"/);
+  assert.match(source, /export const \{ workflowState \} = planStatus/);
   assert.match(source, /api\/open-chat\?id=/);
   assert.match(source, /api\/open-plan\?id=/);
   assert.match(source, /nativeActionsAvailable=\{overview\?\.nativeActions === true\}/);
