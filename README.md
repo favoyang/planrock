@@ -60,6 +60,8 @@ planrock status
 
 ```bash
 planrock status
+planrock pending
+planrock active
 planrock open
 planrock open --sort time
 planrock open --full-agent-session
@@ -73,6 +75,23 @@ planrock dashboard stop
 ```
 
 By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
+
+`pending` and `active` are workflow views of the authored lifecycle. An open
+plan is active when it has at least one checked checklist item or at least one
+`agent_sessions` entry; otherwise it is pending. A closed plan is always
+closed. Consequently, a zero-checklist plan is pending until a session is
+recorded, a session-only plan is active, and a fully checked plan remains
+active until its frontmatter is formally changed to `state: closed`.
+
+`planrock open` remains the backward-compatible aggregate of pending and active
+plans. `planrock status` reports open, pending, active, closed, and invalid
+counts, then displays separate pending and active sections. Plans with missing
+or unsupported `state` values or structurally malformed frontmatter are counted
+as invalid and excluded from all lifecycle collections. For compatibility, the
+local CLI still ignores unsupported nested fields and lets the last duplicate
+scalar key win. JSON adds `workflow` to plan
+records and adds `pending`, `active`, and `invalid` summary fields while
+preserving the existing `open`, `closed`, and `recentOpenPlans` fields.
 
 The cross-project registry is opt-in. Every explicit root may contribute its
 own direct `plans/` and bounded child Git repositories with direct `plans/`.

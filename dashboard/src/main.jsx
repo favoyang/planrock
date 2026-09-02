@@ -23,8 +23,11 @@ import {
 } from "@mantine/core";
 import "@mantine/core/styles.css";
 import packageJson from "../../package.json";
+import planStatus from "../../lib/plan-status";
 import { fetchAllPages } from "./pagination";
 import "./styles.css";
+
+export const { workflowState } = planStatus;
 
 const theme = createTheme({
   primaryColor: "teal",
@@ -51,11 +54,6 @@ export async function copyText(value) {
   const copied = document.execCommand?.("copy") === true;
   textarea.remove();
   if (!copied) throw new Error("Copy is unavailable in this browser");
-}
-
-export function workflowState(plan) {
-  if (plan.state === "closed") return "closed";
-  return plan.checklistDone > 0 || (plan.agentSessions?.length || 0) > 0 ? "active" : "pending";
 }
 
 export function filterPlans(plans, { lifecycle, workflow, project, query }) {

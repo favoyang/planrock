@@ -42,7 +42,7 @@ function printOverview(snapshot, limit = 50) {
   for (const plan of snapshot.openPlans.slice(0, limit)) console.log(`${escapeTerminalControls(plan.priority)}  ${escapeTerminalControls(plan.projectName)}  ${escapeTerminalControls(plan.title)}  ${plan.checklistDone}/${plan.checklistTotal}  ${escapeTerminalControls(plan.createdAt)}`);
   if (snapshot.openPlans.length > limit) console.log(`… ${snapshot.openPlans.length - limit} more (use --json with bounded pagination)`);
 }
-function help() { console.log(`Usage: planrock [status|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
+function help() { console.log(`Usage: planrock [status|pending|active|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
        planrock goal <path-to-plan>
        planrock overview [--json] [--limit <1-1000>] [--cursor <opaque> (JSON only)]
        planrock refresh [--json]
@@ -58,7 +58,7 @@ async function main() {
   if (options.help) { help(); return; } if (options.version) { console.log(packageJson.version); return; }
   const command = positional[0] || "status";
   try {
-    if (["status", "open", "closed"].includes(command)) { if (positional.length > 1) throw new Error(`Unknown argument: ${positional[1]}`); runLocal(command, { workingDir: workingDir(options.workingDir), sort: options.sort, json: options.json, fullAgentSession: options.fullAgentSession }); return; }
+    if (["status", "pending", "active", "open", "closed"].includes(command)) { if (positional.length > 1) throw new Error(`Unknown argument: ${positional[1]}`); runLocal(command, { workingDir: workingDir(options.workingDir), sort: options.sort, json: options.json, fullAgentSession: options.fullAgentSession }); return; }
     if (command === "goal") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); runGoal(positional[1], workingDir(options.workingDir)); return; }
     if (command === "overview") {
       if (options.cursor && !options.json) throw new Error("--cursor requires --json");

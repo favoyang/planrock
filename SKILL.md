@@ -1,6 +1,6 @@
 ---
 name: planrock
-description: Create, inspect, summarize, and continue Markdown saved plans stored in the current working directory's plans/ directory. Use when the user says plan, saved plan, or planrock in requests such as creating a plan, creating a saved plan, creating a planrock, listing saved plans, showing open plans, closed plans, recent closed plans, plan status, plan progress, or continuing/implementing a saved plan; especially for repositories that store durable plans as Markdown files with YAML frontmatter and checklist items.
+description: Create, inspect, summarize, and continue Markdown saved plans stored in the current working directory's plans/ directory. Use when the user says plan, saved plan, or planrock in requests such as creating a plan, creating a saved plan, creating a planrock, listing saved plans, showing pending, active, open, or closed plans, plan status, plan progress, or continuing/implementing a saved plan; especially for repositories that store durable plans as Markdown files with YAML frontmatter and checklist items.
 ---
 
 # Planrock
@@ -15,6 +15,8 @@ Use the bundled CLI first for read-only plan inventory requests:
 
 ```bash
 node <skill-dir>/scripts/planrock status --working-dir <working-dir>
+node <skill-dir>/scripts/planrock pending --working-dir <working-dir>
+node <skill-dir>/scripts/planrock active --working-dir <working-dir>
 node <skill-dir>/scripts/planrock open --working-dir <working-dir>
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --sort time
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --full-agent-session
@@ -34,14 +36,27 @@ Use `plans/` directly under the current working directory as the convention. Do 
 
 ## Commands
 
-- `status`: Show summary counts plus the 10 highest-priority open plans and 10 most recent closed plans.
-- `open`: Show all open plans, priority first and then newest `created_at`.
+- `status`: Show open, pending, active, closed, and invalid counts; the 10 highest-priority pending and active plans; and the 10 most recent closed plans.
+- `pending`: Show open plans with no checked checklist items and no agent sessions.
+- `active`: Show open plans with at least one checked checklist item or agent session.
+- `open`: Show all pending and active plans as a backward-compatible aggregate, priority first and then newest `created_at`.
 - `closed`: Show all closed plans, newest `closed_at` first.
 - `goal <path-to-plan>`: Print a copy-pasteable Codex `/goal` command from the
   body of the plan's `## Goal` section, ending with a stable `plans/...`
   reference for the original plan file.
 
-By default, `status` and `open` sort open plans by `priority` (`P0`, `P1`, `P2`, `P3`, `P4`) and then newest `created_at`. Use `--sort time` for the old newest-created-first behavior, or `--sort priority` to spell the default explicitly.
+By default, `status`, `pending`, `active`, and `open` sort open plans by `priority` (`P0`, `P1`, `P2`, `P3`, `P4`) and then newest `created_at`. Use `--sort time` for the old newest-created-first behavior, or `--sort priority` to spell the default explicitly.
+
+Pending and active are derived workflow states shared with the dashboard; plan
+frontmatter continues to use only lifecycle `state: open` or `state: closed`.
+A closed plan is always closed. An open plan is active when it has at least one
+checked checklist item or at least one normalized `agent_sessions` entry, and
+is pending otherwise. Thus zero-checklist plans are pending without sessions,
+session-only plans are active, and fully checked open plans stay active until
+formally closed. Missing or unsupported lifecycle state and structurally
+malformed frontmatter are invalid and excluded from lifecycle and workflow
+collections. The local CLI retains legacy tolerance for unsupported nested
+fields and uses the last duplicate scalar key.
 
 The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, and `closed_at`, reads list frontmatter key `agent_sessions`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
 
@@ -83,6 +98,7 @@ agent_sessions: []
 ```
 
 Then write a concise checklist of concrete implementation steps using `- [ ]`.
+The new plan is pending until a checklist item is checked or an agent session is recorded.
 
 ## Continuing A Plan
 
