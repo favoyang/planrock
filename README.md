@@ -100,6 +100,47 @@ explicit-registration-only. It also performs a one-way, optional import from a
 valid fixed TaskChef schema-2 file without depending on TaskChef code or
 runtime state.
 
+### Registry ignores
+
+`~/.agents/planrock/planrock.json` uses schema version 2 and contains one
+top-level `ignore` array. New registries use `"ignore": []`. Configured entries
+extend Planrock's built-in pruning of version-control, dependency, build,
+output, cache, temporary, and virtual-environment directories, including
+`.uv-cache`, `.npm-cache`, `.deps`, and `.agents`.
+
+Non-absolute entries match directories inside every registered project. An
+entry without `/` is a case-sensitive directory-name pattern at any depth; an
+entry containing `/` is a case-sensitive, project-root-relative pattern.
+Backslashes are normalized to `/`, `*` matches within one path segment, a
+whole `**` segment may span path segments, and `?` matches one non-separator character. Negation,
+escaping above a project root, per-project ignores, and implicit `.gitignore`
+loading are not supported. A relative pattern is never applied to the
+registered root itself, even when its basename matches.
+The array is limited to 512 entries and 256 KiB of pattern text. Each pattern
+is also bounded to 256 segments and 1,024 wildcard tokens; Planrock validates
+and compiles the segments once before bounded, non-backtracking discovery.
+
+Canonical absolute entries have one narrower meaning: they exclude that exact
+project root from automatic TaskChef import and scanning. Removing a
+TaskChef-imported project adds its canonical root to `ignore`; explicitly
+adding or relinking the exact root removes that automatic exclusion. Planrock
+migrates canonical absolute schema-1 `suppressions.taskchef` tombstones to
+`ignore` while preserving project identities and discovery settings. Relative
+or malformed legacy suppressions are rejected rather than reinterpreted as
+global patterns. Invalid, ambiguous, oversized, or
+unsupported entries reject the refresh and appear in the latest scan attempt;
+the last usable index remains available.
+
+### Latest scan health
+
+Planrock keeps exactly one bounded latest-attempt record in
+`~/.agents/planrock/latest-scan.json`, separate from the latest usable
+`index.json`. The record contains timing, trigger, outcome, snapshot identity,
+diagnostics, and invalid-plan metadata. A successful or incomplete refresh
+updates both records; a failed refresh updates only the attempt record, so CLI
+and dashboard readers continue to use the previous valid index. Managed files
+remain owner-only, non-symlink, size-bounded, and atomically replaced.
+
 The dashboard listens on all IPv4 interfaces at port `4210` by default so
 multiple local or LAN viewers can open it without authentication. `--port` overrides
 the port for that invocation and is not persisted. `start` and `open` return a
@@ -109,6 +150,12 @@ machine's LAN address for another device.
 Only run the dashboard on a trusted local network: every viewer can read the
 indexed plans and Markdown documents they link. Remote viewers are read-only;
 refresh, system-file, chat, and lifecycle controls remain host-only.
+
+The home-page health badge opens **Index health**, where the latest attempt's
+registry issues, invalid plans, and scan diagnostics are shown without scan
+history or aggregate issue counts. Refresh is available there only to a local
+viewer. The dashboard's Pending, Active, Open, and Closed views use the same
+workflow definitions as the CLI, with Open selected by default.
 
 Unauthenticated dashboards use lifecycle control protocol 2. Current Planrock
 can hand off a legacy authenticated protocol-1 dashboard, but older protocol-1

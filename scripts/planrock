@@ -4,7 +4,7 @@ const path = require("node:path");
 const packageJson = require("../package.json");
 const { DEFAULT_PORT } = require("../lib/constants");
 const { dashboardStatus, mintUrl, readOwner, serveDashboard, startDashboard, stopDashboard } = require("../lib/dashboard");
-const { loadIndex, pageCollection, refreshIndex } = require("../lib/indexer");
+const { loadIndex, loadLatestScan, pageCollection, refreshIndex } = require("../lib/indexer");
 const { escapeTerminalControls, runGoal, runLocal } = require("../lib/local");
 const { addProject, loadRegistry, registryDiagnostics, relinkProject, removeProject } = require("../lib/registry");
 const { importTaskChef } = require("../lib/taskchef");
@@ -50,7 +50,7 @@ function help() { console.log(`Usage: planrock [status|pending|active|open|close
        planrock project remove|relink|list|validate|import ...
        planrock dashboard start|open|status|stop [--port <number>] [--json]
 
-Existing repository-local commands retain their prior behavior. Global Planrock data is stored only in ~/.agents/planrock.`); }
+Existing repository-local commands retain their prior behavior. Global Planrock data is stored only in ~/.agents/planrock. Registry schema 2 uses one top-level ignore array; relative entries prune directories and canonical absolute entries exclude exact project roots.`); }
 
 async function main() {
   let parsed; try { parsed = parse(process.argv.slice(2)); } catch (error) { console.error(escapeTerminalControls(error.message)); process.exitCode = 1; return; }
@@ -62,22 +62,23 @@ async function main() {
     if (command === "goal") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); runGoal(positional[1], workingDir(options.workingDir)); return; }
     if (command === "overview") {
       if (options.cursor && !options.json) throw new Error("--cursor requires --json");
-      const snapshot = options.cursor ? loadIndex({ refreshIfMissing: false }) : refreshIndex();
+      const snapshot = options.cursor ? loadIndex({ refreshIfMissing: false }) : refreshIndex({ trigger: "overview" });
       if (!snapshot) throw new Error("No persisted Planrock snapshot exists for this cursor; run overview without --cursor first");
-      if (options.json && (options.cursor || options.limit)) output({ overview: { schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) }, page: pageCollection(snapshot, "openPlans", { cursor: options.cursor, limit: options.limit }) }, true);
-      else if (options.json) { const nextUp = pageCollection(snapshot, "openPlans", { limit: 50 }); output({ schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100), nextUp: nextUp.items, omittedNextUp: Math.max(0, snapshot.openPlans.length - nextUp.items.length) }, true); }
+      const latestScan = loadLatestScan({ snapshotId: snapshot.snapshotId });
+      if (options.json && (options.cursor || options.limit)) output({ overview: { schemaVersion: 2, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, latestScan, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) }, page: pageCollection(snapshot, "openPlans", { cursor: options.cursor, limit: options.limit }) }, true);
+      else if (options.json) { const nextUp = pageCollection(snapshot, "openPlans", { limit: 50 }); output({ schemaVersion: 2, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, latestScan, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100), nextUp: nextUp.items, omittedNextUp: Math.max(0, snapshot.openPlans.length - nextUp.items.length) }, true); }
       else printOverview(snapshot, Math.max(1, Math.min(Number(options.limit) || 50, 1000)));
       return;
     }
-    if (command === "refresh") { const snapshot = refreshIndex(); output(options.json ? { schemaVersion: 1, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) } : `Refreshed ${snapshot.summary.projects} projects at ${snapshot.refreshedAt}${snapshot.incomplete ? " (incomplete)" : ""}`, options.json); return; }
+    if (command === "refresh") { const snapshot = refreshIndex({ trigger: "cli" }); output(options.json ? { schemaVersion: 2, snapshotId: snapshot.snapshotId, refreshedAt: snapshot.refreshedAt, incomplete: snapshot.incomplete, latestScan: loadLatestScan({ snapshotId: snapshot.snapshotId }), summary: snapshot.summary, diagnostics: snapshot.diagnostics.slice(0, 100), omittedDiagnostics: Math.max(0, snapshot.diagnostics.length - 100) } : `Refreshed ${snapshot.summary.projects} projects at ${snapshot.refreshedAt}${snapshot.incomplete ? " (incomplete)" : ""}`, options.json); return; }
     if (command === "project") {
       const action = positional[1];
-      if (action === "add") { if (!options.name || !positional[2]) throw new Error("project add requires <path> and --name"); output(withStorageLock("data", () => addProject(loadRegistry(), { name: options.name, root: positional[2], discovery: options.discovery })), options.json); return; }
-      if (action === "remove") { output(withStorageLock("data", () => removeProject(loadRegistry(), positional[2])), options.json); return; }
-      if (action === "relink") { if (!positional[2] || !positional[3]) throw new Error("project relink requires <id-or-name> <new-path>"); output(withStorageLock("data", () => relinkProject(loadRegistry(), positional[2], positional[3])), options.json); return; }
-      if (action === "list") { const registry = loadRegistry(); const limit = Math.max(1, Math.min(Number(options.limit) || 100, 1000)); const projects = registry.projects.slice(0, limit); output(options.json ? { schemaVersion: 1, projects, omitted: registry.projects.length - projects.length } : projects.map((item) => `${escapeTerminalControls(item.name)}\t${escapeTerminalControls(item.root)}\t${escapeTerminalControls(item.source)}`).join("\n") || "(none)", options.json); return; }
+      if (action === "add") { if (!options.name || !positional[2]) throw new Error("project add requires <path> and --name"); output(withStorageLock("data", () => addProject(loadRegistry({ migrate: false }), { name: options.name, root: positional[2], discovery: options.discovery })), options.json); return; }
+      if (action === "remove") { output(withStorageLock("data", () => removeProject(loadRegistry({ migrate: false }), positional[2])), options.json); return; }
+      if (action === "relink") { if (!positional[2] || !positional[3]) throw new Error("project relink requires <id-or-name> <new-path>"); output(withStorageLock("data", () => relinkProject(loadRegistry({ migrate: false }), positional[2], positional[3])), options.json); return; }
+      if (action === "list") { const registry = loadRegistry(); const limit = Math.max(1, Math.min(Number(options.limit) || 100, 1000)); const projects = registry.projects.slice(0, limit); output(options.json ? { schemaVersion: 2, projects, ignore: registry.ignore, omitted: registry.projects.length - projects.length } : projects.map((item) => `${escapeTerminalControls(item.name)}\t${escapeTerminalControls(item.root)}\t${escapeTerminalControls(item.source)}`).join("\n") || "(none)", options.json); return; }
       if (action === "validate") { const diagnostics = registryDiagnostics(loadRegistry()); output(options.json ? { valid: !diagnostics.some((item) => item.severity === "error"), diagnostics } : diagnostics.length ? diagnostics.map((item) => `${escapeTerminalControls(item.severity.toUpperCase())} ${escapeTerminalControls(item.code)}: ${escapeTerminalControls(item.message)}`).join("\n") : "Registry is valid.", options.json); return; }
-      if (action === "import" && positional[2] === "taskchef") { output(withStorageLock("data", () => importTaskChef(loadRegistry())), options.json); return; }
+      if (action === "import" && positional[2] === "taskchef") { output(withStorageLock("data", () => importTaskChef(loadRegistry({ migrate: false }))), options.json); return; }
       throw new Error("Unknown project command");
     }
     if (command === "dashboard") {

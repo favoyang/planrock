@@ -27,6 +27,11 @@ Planrock automatically inspects the fixed optional
 `~/.agents/taskchef/taskchef.json` schema-2 source during refresh. Use
 `project import taskchef --json` only for a forced diagnostic import.
 
-Report canonicalization, unavailable roots, suppressions, scan limits, and
-incomplete snapshots to the user. Do not edit repository-local plan files as
-part of registry repair.
+The schema-version-2 registry has one top-level `ignore` array. Relative
+entries extend built-in directory pruning; canonical absolute entries exclude
+only that exact project root from automatic import and scanning. Removing a
+TaskChef-imported root adds its absolute exclusion, while explicit add or
+relink removes that exact exclusion. Report canonicalization, unavailable
+roots, ignore validation, latest-attempt failures, scan limits, and incomplete
+snapshots to the user. Do not edit repository-local plan files as part of
+registry repair.

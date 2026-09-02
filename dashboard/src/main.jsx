@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   Badge,
   Button,
-  Container,
   createTheme,
   Divider,
   Drawer,
@@ -56,9 +55,10 @@ export async function copyText(value) {
   if (!copied) throw new Error("Copy is unavailable in this browser");
 }
 
-export function filterPlans(plans, { lifecycle, workflow, project, query }) {
+export function filterPlans(plans, { view = "open", lifecycle, workflow, project, query }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  return plans.filter((plan) => plan.state === lifecycle).filter((plan) => lifecycle === "closed" || workflow === "all" || workflowState(plan) === workflow).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
+  const selectedView = lifecycle ? (lifecycle === "closed" ? "closed" : workflow === "all" ? "open" : workflow) : view;
+  return plans.filter((plan) => selectedView === "closed" ? plan.state === "closed" : plan.state === "open" && (selectedView === "open" || workflowState(plan) === selectedView)).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
 }
 
 function parseTimestamp(value) {
@@ -273,7 +273,8 @@ function MarkdownDrawer({ preview, plansByPath, onClose, onOpenPlan, onOpenMarkd
 
 function PlanDrawer({ plan, plans, onClose, nativeActionsAvailable }) {
   const workflow = workflowState(plan);
-  const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath), item])), [plans]);
+  const planPath = plan.absolutePath || plan.pathRef;
+  const plansByPath = useMemo(() => new Map(plans.map((item) => [normalizePlanPath(item.absolutePath || item.pathRef), item])), [plans]);
   const [copyStatus, setCopyStatus] = useState("");
   const [chatStatus, setChatStatus] = useState("");
   const [pathStatus, setPathStatus] = useState("");
@@ -317,12 +318,12 @@ function PlanDrawer({ plan, plans, onClose, nativeActionsAvailable }) {
         <PlanProgress plan={plan} className="detail-progress" />
         <Divider />
         <Group className="detail-stats" align="flex-start"><div className="detail-stat"><Text className="time-label">Priority</Text><Badge className={`priority ${plan.priority}`} variant="light">{plan.priority}</Badge></div><div className="detail-stat"><Text className="time-label">State</Text><Text className="time-value detail-state-value" size="sm" fw={550}>{workflow === "active" ? "Active" : workflow === "pending" ? "Pending" : "Closed"}</Text></div><RelativeTime label="Created" value={plan.createdAt} /><RelativeTime label="Updated" value={plan.updatedAt} />{plan.state === "closed" && <RelativeTime label="Closed" value={plan.closedAt} />}</Group>
-        <Group className="detail-actions" gap="sm"><ChatAction sessions={plan.agentSessions} onOpen={openChat} disabled={!nativeActionsAvailable} /><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${plan.absolutePath}.`)}>Copy goal command</Button></Group>
+        <Group className="detail-actions" gap="sm"><ChatAction sessions={plan.agentSessions} onOpen={openChat} disabled={!nativeActionsAvailable} /><Button variant="default" onClick={() => copy("Goal command", `/goal\n${plan.goalExcerpt || ""}\n\nUse plan reference: ${nativeActionsAvailable ? plan.absolutePath : `${plan.projectName} · ${plan.relativeFile}`}.`)}>Copy goal command</Button></Group>
         {!nativeActionsAvailable && <Text size="xs" c="dimmed">System file and chat actions are available on the Planrock host machine only.</Text>}
         {chatStatus && <Text role="status" size="sm" c={chatStatus.startsWith("Could not") ? "red" : "dimmed"}>{chatStatus}</Text>}
         {copyStatus && <Text role="status" size="sm" c={copyStatus.startsWith("Copy failed") ? "red" : "dimmed"}>{copyStatus}</Text>}
-        <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={plan.absolutePath} plansByPath={plansByPath} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay}>{planContent}</MarkdownText>}</section>
-        <div><Text className="detail-label">Plan path</Text>{nativeActionsAvailable ? <UnstyledButton className="path-text detail-link detail-meta-value" onClick={openPlanPath} title="Open plan in the system">{plan.absolutePath}</UnstyledButton> : <Text size="xs" className="path-text detail-meta-value">{plan.absolutePath}</Text>}{pathStatus && <Text role="status" size="xs" c={pathStatus.startsWith("Could not") ? "red" : "dimmed"}>{pathStatus}</Text>}</div>
+        <section>{planContentLoading && <Text size="sm" c="dimmed">Loading plan…</Text>}{planContentError && <Text role="alert" size="sm" c="red">{planContentError}</Text>}{planContent && <MarkdownText className="plan-content" basePath={planPath} plansByPath={plansByPath} onOpenPlan={openPlanOverlay} onOpenMarkdown={openMarkdownOverlay}>{planContent}</MarkdownText>}</section>
+        <div><Text className="detail-label">Plan path</Text>{nativeActionsAvailable ? <UnstyledButton className="path-text detail-link detail-meta-value" onClick={openPlanPath} title="Open plan in the system">{plan.absolutePath}</UnstyledButton> : <Text size="xs" className="path-text detail-meta-value">{plan.projectName} · {plan.relativeFile}</Text>}{pathStatus && <Text role="status" size="xs" c={pathStatus.startsWith("Could not") ? "red" : "dimmed"}>{pathStatus}</Text>}</div>
         {plan.agentSessions?.length > 0 && <div><Text className="detail-label">Agent sessions</Text><Stack gap={4}>{plan.agentSessions.map((session) => sessionThreadId(session) && nativeActionsAvailable ? <UnstyledButton key={session} className="path-text detail-link detail-meta-value" onClick={() => openChat(session)} title="Open Codex task">{session}</UnstyledButton> : <Text key={session} size="xs" className="path-text detail-meta-value">{session}</Text>)}</Stack></div>}
         {plan.relatedLinks?.length > 0 && <div><Text className="detail-label">Related links</Text><Stack gap={6}>{plan.relatedLinks.map((link) => <Text component="a" size="sm" key={link} href={link} target="_blank" rel="noreferrer">{link}</Text>)}</Stack></div>}
       </Stack>
@@ -332,9 +333,23 @@ function PlanDrawer({ plan, plans, onClose, nativeActionsAvailable }) {
   </>;
 }
 
-function HealthDrawer({ overview, onClose, displayState }) {
-  const state = displayState || overview.health?.state || (overview.incomplete ? "degraded" : "healthy");
-  return <Drawer opened onClose={onClose} title="Registry and health" position="right" size="lg"><Stack><div><Text className="detail-label">Current state</Text><Title order={2}>{state}</Title></div><Group><Badge variant="light">{overview.summary.invalid} invalid</Badge><Badge variant="light">{overview.diagnostics.length} diagnostics shown</Badge></Group><Divider />{overview.diagnostics.length ? <Stack gap="sm">{overview.diagnostics.map((item, index) => <Paper key={`${item.code}-${index}`} withBorder p="md"><Text fw={650}>{item.code}</Text><Text size="sm" c="dimmed">{item.message}</Text></Paper>)}</Stack> : <Text c="dimmed">No registry or scan warnings.</Text>}</Stack></Drawer>;
+function HealthBadge({ state, disabled = false, onClick, buttonRef }) {
+  const color = state === "healthy" ? "teal" : state === "loading" ? "gray" : "orange";
+  const content = <><span className="health-dot" aria-hidden="true" />{state}</>;
+  return onClick ? <Button ref={buttonRef} className={`health-button ${state}`} variant="subtle" color={color} disabled={disabled} onClick={onClick}>{content}</Button> : <div className={`health-button health-status ${state}`} role="status" aria-label={`Index health: ${state}`}>{content}</div>;
+}
+
+function DiagnosticItem({ item, scanTime }) {
+  return <Paper className="diagnostic-item" withBorder p="md"><Group justify="space-between" align="flex-start" gap="sm"><Badge color={item.severity === "error" ? "red" : item.severity === "warning" ? "orange" : "gray"} variant="light">{item.severity || "info"}</Badge><Text size="xs" c="dimmed"><time dateTime={scanTime}>{formatFullDate(scanTime)}</time></Text></Group><Text mt="xs" fw={650}>{item.code}</Text><Text size="sm">{item.message}</Text>{(item.project || item.relativeFile) && <Text className="diagnostic-context" size="xs" c="dimmed">{[item.project, item.relativeFile].filter(Boolean).join(" · ")}</Text>}</Paper>;
+}
+
+function IndexHealth({ overview, healthState, refresh, refreshing, refreshAvailable, onBack }) {
+  const scan = overview.latestScan;
+  const invalidPlans = scan?.invalidPlans || [];
+  const invalidDiagnosticKeys = new Set(invalidPlans.flatMap((plan) => (plan.diagnostics || []).map((item) => JSON.stringify([item.code, item.severity, item.message, item.project || plan.project || "", item.relativeFile || plan.relativeFile || ""]))));
+  const diagnostics = (scan?.diagnostics || overview.diagnostics || []).filter((item) => !invalidDiagnosticKeys.has(JSON.stringify([item.code, item.severity, item.message, item.project || "", item.relativeFile || ""])));
+  const hasIssues = diagnostics.length > 0 || invalidPlans.length > 0;
+  return <Stack gap="lg"><Group justify="space-between"><Button variant="subtle" autoFocus onClick={onBack}>Back to plans</Button><div className="refresh-control" title={!refreshAvailable ? "Refresh is available on the Planrock host machine only" : undefined}><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing || !refreshAvailable} aria-busy={refreshing} onClick={refresh}>Refresh</Button></div></Group>{scan && <Paper className="scan-summary" withBorder p="md"><Group justify="space-between" gap="md"><Text size="sm"><strong>Latest scan:</strong> {scan.outcome}</Text><Text size="sm" c="dimmed">{scan.durationMs} ms · {scan.trigger}</Text></Group></Paper>}{!scan && <Paper className="health-empty" withBorder><Text c="dimmed">{healthState === "loading" ? "Index health is loading." : "Latest scan health is unavailable."}</Text></Paper>}{scan && !hasIssues && <Paper className="health-empty" withBorder><Text c="dimmed">No issues in the latest scan.</Text></Paper>}{invalidPlans.length > 0 && <section aria-labelledby="invalid-plans-heading"><Text id="invalid-plans-heading" className="section-kicker" component="h2" mb="sm">Invalid plans</Text><Stack gap="sm">{invalidPlans.map((plan, index) => (plan.diagnostics?.length ? plan.diagnostics : [{ code: "PLAN_INVALID", severity: "error", message: "Plan is invalid" }]).map((item, itemIndex) => <DiagnosticItem key={`invalid-${index}-${itemIndex}`} item={{ ...item, project: item.project || plan.project, relativeFile: item.relativeFile || plan.relativeFile }} scanTime={scan.finishedAt} />))}</Stack></section>}{diagnostics.length > 0 && <section aria-labelledby="scan-diagnostics-heading"><Text id="scan-diagnostics-heading" className="section-kicker" component="h2" mb="sm">Scan diagnostics</Text><Stack gap="sm">{diagnostics.map((item, index) => <DiagnosticItem key={`${item.code}-${index}`} item={item} scanTime={scan?.finishedAt || overview.refreshedAt} />)}</Stack></section>}</Stack>;
 }
 
 export function App() {
@@ -342,16 +357,16 @@ export function App() {
   const [allPlans, setAllPlans] = useState([]);
   const [repositories, setRepositories] = useState([]);
   const [query, setQuery] = useState("");
-  const [lifecycle, setLifecycle] = useState("open");
-  const [workflow, setWorkflow] = useState("all");
+  const [view, setView] = useState("open");
   const [project, setProject] = useState(null);
   const [onlyOpenProjects, setOnlyOpenProjects] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
-  const [healthOpen, setHealthOpen] = useState(false);
+  const [page, setPage] = useState("home");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const overlayTrigger = useRef(null);
+  const healthTrigger = useRef(null);
   const loadGeneration = useRef(0);
 
   async function load() {
@@ -373,46 +388,38 @@ export function App() {
 
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, []);
 
-  const counts = useMemo(() => {
-    const result = { open: 0, pending: 0, active: 0, closed: 0 };
-    for (const plan of allPlans) { const state = workflowState(plan); if (state === "closed") result.closed += 1; else { result.open += 1; result[state] += 1; } }
-    return result;
-  }, [allPlans]);
-
   const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenProjects || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories, onlyOpenProjects]);
   useEffect(() => { if (project && !projectOptions.some((option) => option.value === project)) setProject(null); }, [project, projectOptions]);
 
-  const filtered = useMemo(() => filterPlans(allPlans, { lifecycle, workflow, project, query }), [allPlans, lifecycle, workflow, project, query]);
+  const filtered = useMemo(() => filterPlans(allPlans, { view, project, query }), [allPlans, view, project, query]);
   const selected = useMemo(() => selectedId ? allPlans.find((plan) => plan.id === selectedId) || null : null, [allPlans, selectedId]);
 
   async function refresh() { const startedAt = Date.now(); try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { const remaining = Math.max(0, 800 - (Date.now() - startedAt)); if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining)); setRefreshing(false); } }
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
   function closePlan() { setSelectedId(null); restoreOverlayFocus(); }
-  function closeHealth() { setHealthOpen(false); restoreOverlayFocus(); }
   const healthState = refreshing ? "loading" : refreshFailed ? "stale" : overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
-  const healthColor = healthState === "healthy" ? "teal" : healthState === "loading" ? "gray" : "orange";
   const refreshAvailable = overview?.nativeActions === true;
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell">
-      <header className="dashboard-navbar"><Container size="xl" pt={{ base: "lg", sm: 36 }}><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Group className="header-actions" gap="sm" align="flex-start"><Button className={`health-button ${healthState}`} variant="subtle" color={healthColor} disabled={!overview} onClick={(event) => { overlayTrigger.current = event.currentTarget; setHealthOpen(true); }}><span className="health-dot" aria-hidden="true" />{healthState}</Button><div className="refresh-control" title={!refreshAvailable && overview ? "Refresh is available on the Planrock host machine only" : undefined}><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing || !refreshAvailable} aria-busy={refreshing} onClick={refresh}>Refresh</Button>{overview && <RefreshedTime value={overview.refreshedAt} />}</div></Group></div></Container></header>
-      <Container size="xl" pt="xs" pb={{ base: "lg", sm: 36 }}>
+      <header className="dashboard-navbar"><div className="content-shell header-shell"><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>{page === "health" ? "Index health" : "Dashboard"}</Title></div><Group className="header-actions" gap="sm" align="flex-start"><HealthBadge state={healthState} disabled={!overview} buttonRef={healthTrigger} onClick={page === "home" ? () => setPage("health") : undefined} />{page === "home" && overview && <RefreshedTime value={overview.refreshedAt} />}</Group></div></div></header>
+      <main className="content-shell main-shell">
       {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
-      {overview && <Stack gap="lg">
+      {overview && page === "home" && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
           <div className="filter-top-grid">
-            <div className="filter-field project-field"><Group className="filter-heading" justify="space-between" gap="sm"><Text className="filter-label">Project</Text><Text className="filter-count" size="xs" c="dimmed">{projectOptions.length} of {repositories.length}</Text></Group><Select aria-label="Project" placeholder="All projects" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
-            <div className="filter-field search-field"><div className="filter-heading"><Text className="filter-label">Search</Text></div><TextInput aria-label="Search plans" placeholder="Title, project, or path" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></div>
+            <div className="filter-field project-field"><Group className="filter-heading" justify="space-between" gap="sm"><Text className="filter-label">Project</Text><Text className="filter-count" size="xs" c="dimmed">{projectOptions.length} of {repositories.length}</Text></Group><Select aria-label="Project" placeholder="All" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
+            <div className="filter-field search-field"><div className="filter-heading"><Text className="filter-label">Search</Text></div><TextInput aria-label="Search plans" placeholder="Search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></div>
             <div className="project-toggle-row"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /></div>
           </div>
           <Divider my="md" />
-            <div className="state-grid"><div><div className="filter-heading"><Text className="filter-label">State</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan lifecycle" size="xs" fullWidth value={lifecycle} onChange={setLifecycle} data={[{ value: "open", label: `Open ${counts.open}` }, { value: "closed", label: `Closed ${counts.closed}` }]} /></div></div>{lifecycle === "open" && <div><div className="filter-heading"><Text className="filter-label">Progress</Text></div><div className="segmented-scroll"><SegmentedControl aria-label="Plan progress" size="xs" fullWidth value={workflow} onChange={setWorkflow} data={[{ value: "all", label: `All ${counts.open}` }, { value: "pending", label: `Pending ${counts.pending}` }, { value: "active", label: `Active ${counts.active}` }]} /></div></div>}</div>
+            <div><div className="filter-heading"><Text className="filter-label">View</Text></div><SegmentedControl className="view-selector" aria-label="Plan view" size="xs" fullWidth value={view} onChange={setView} data={[{ value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "open", label: "Open" }, { value: "closed", label: "Closed" }]} /></div>
         </Paper>
         <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelectedId(plan.id); }} />
       </Stack>}
       {selected && <PlanDrawer plan={selected} plans={allPlans} onClose={closePlan} nativeActionsAvailable={overview?.nativeActions === true} />}
-      {healthOpen && overview && <HealthDrawer overview={overview} displayState={healthState} onClose={closeHealth} />}
-      </Container>
+      {overview && page === "health" && <IndexHealth overview={overview} healthState={healthState} refresh={refresh} refreshing={refreshing} refreshAvailable={refreshAvailable} onBack={() => { setPage("home"); requestAnimationFrame(() => healthTrigger.current?.focus()); }} />}
+      </main>
     </div>
   </MantineProvider>;
 }
