@@ -66,6 +66,9 @@ planrock open
 planrock open --sort time
 planrock open --full-agent-session
 planrock closed
+planrock create example-plan --title "Example plan" --priority P2
+planrock validate plans/example-plan.md
+planrock validate
 planrock goal plans/example-plan.md
 planrock project add /path/to/repository --name example
 planrock refresh
@@ -75,6 +78,16 @@ planrock dashboard stop
 ```
 
 By default, Planrock reads `plans/` under the current working directory. Use `--working-dir /path/to/repo` when you want to inspect a different repository. Add `--json` for machine-readable output.
+
+`planrock create <slug> --title <short-title>` creates a canonical plan under
+`plans/`, creates that directory when needed, and refuses to overwrite an
+existing file. Slugs use lowercase kebab-case; priorities are `P0` through
+`P4` and default to `P2`.
+
+`planrock validate [path]` validates one direct `plans/*.md` file or every
+direct plan when the path is omitted. It is intentionally strict: any parser
+warning or error produces a non-zero exit status, so legacy metadata, invalid
+dates, and truncated indexed fields are caught before a plan edit is accepted.
 
 `pending` and `active` are workflow views of the authored lifecycle. An open
 plan is active when it has at least one checked checklist item or at least one

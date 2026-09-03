@@ -5,19 +5,19 @@ const packageJson = require("../package.json");
 const { DEFAULT_PORT } = require("../lib/constants");
 const { dashboardStatus, mintUrl, readOwner, serveDashboard, startDashboard, stopDashboard } = require("../lib/dashboard");
 const { loadIndex, loadLatestScan, pageCollection, refreshIndex } = require("../lib/indexer");
-const { escapeTerminalControls, runGoal, runLocal } = require("../lib/local");
+const { createPlan, escapeTerminalControls, runGoal, runLocal, validatePlans } = require("../lib/local");
 const { addProject, loadRegistry, registryDiagnostics, relinkProject, removeProject } = require("../lib/registry");
 const { importTaskChef } = require("../lib/taskchef");
 const { withStorageLock } = require("../lib/security");
 
 function parse(argv) {
-  const positional = []; const options = { json: false, fullAgentSession: false, workingDir: null, sort: "priority", port: undefined, limit: undefined, cursor: undefined, name: undefined, discovery: true };
+  const positional = []; const options = { json: false, fullAgentSession: false, workingDir: null, sort: "priority", port: undefined, limit: undefined, cursor: undefined, name: undefined, title: undefined, priority: "P2", discovery: true };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--json") options.json = true;
     else if (arg === "--full-agent-session") options.fullAgentSession = true;
-    else if (["--working-dir", "--workspace", "--sort", "--port", "--limit", "--cursor", "--name"].includes(arg)) { if (!argv[index + 1]) throw new Error(`${arg} requires a value`); options[arg.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = argv[++index]; }
-    else if (/^--(working-dir|workspace|sort|port|limit|cursor|name)=/.test(arg)) { const [key, ...rest] = arg.slice(2).split("="); options[key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = rest.join("="); }
+    else if (["--working-dir", "--workspace", "--sort", "--port", "--limit", "--cursor", "--name", "--title", "--priority"].includes(arg)) { if (!argv[index + 1] || argv[index + 1].startsWith("--")) throw new Error(`${arg} requires a value`); options[arg.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = argv[++index]; }
+    else if (/^--(working-dir|workspace|sort|port|limit|cursor|name|title|priority)=/.test(arg)) { const [key, ...rest] = arg.slice(2).split("="); options[key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = rest.join("="); }
     else if (arg === "--no-discovery") options.discovery = false;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else if (arg === "--version") options.version = true;
@@ -43,6 +43,8 @@ function printOverview(snapshot, limit = 50) {
   if (snapshot.openPlans.length > limit) console.log(`… ${snapshot.openPlans.length - limit} more (use --json with bounded pagination)`);
 }
 function help() { console.log(`Usage: planrock [status|pending|active|open|closed] [--working-dir <path>] [--sort priority|time] [--json] [--full-agent-session] [--version]
+       planrock create <slug> --title <short-title> [--priority P0-P4] [--working-dir <path>] [--json]
+       planrock validate [plans/<plan>.md] [--working-dir <path>] [--json]
        planrock goal <path-to-plan>
        planrock overview [--json] [--limit <1-1000>] [--cursor <opaque> (JSON only)]
        planrock refresh [--json]
@@ -59,6 +61,8 @@ async function main() {
   const command = positional[0] || "status";
   try {
     if (["status", "pending", "active", "open", "closed"].includes(command)) { if (positional.length > 1) throw new Error(`Unknown argument: ${positional[1]}`); runLocal(command, { workingDir: workingDir(options.workingDir), sort: options.sort, json: options.json, fullAgentSession: options.fullAgentSession }); return; }
+    if (command === "create") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); const created = createPlan(positional[1], { workingDir: workingDir(options.workingDir), title: options.title, priority: options.priority }); output(options.json ? created : `Created ${created.file}.`, options.json); return; }
+    if (command === "validate") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); const result = validatePlans(positional[1], workingDir(options.workingDir)); if (options.json) output(result, true); else if (result.valid) output(result.summary.plans === 1 ? "Plan is valid." : `${result.summary.plans} plans are valid.`, false); else console.log(result.diagnostics.map((item) => `${escapeTerminalControls(item.severity.toUpperCase())} ${escapeTerminalControls(item.code)} ${escapeTerminalControls(item.relativeFile)}: ${escapeTerminalControls(item.message)}`).join("\n")); if (!result.valid) process.exitCode = 1; return; }
     if (command === "goal") { if (positional.length > 2) throw new Error(`Unknown argument: ${positional[2]}`); runGoal(positional[1], workingDir(options.workingDir)); return; }
     if (command === "overview") {
       if (options.cursor && !options.json) throw new Error("--cursor requires --json");
