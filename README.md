@@ -151,11 +151,11 @@ Only run the dashboard on a trusted local network: every viewer can read the
 indexed plans and Markdown documents they link. Remote viewers are read-only;
 refresh, system-file, chat, and lifecycle controls remain host-only.
 
-The home-page health badge opens **Index health**, where the latest attempt's
-registry issues, invalid plans, and scan diagnostics are shown without scan
-history or aggregate issue counts. Refresh is available there only to a local
-viewer. The dashboard's Pending, Active, Open, and Closed views use the same
-workflow definitions as the CLI, with Open selected by default.
+The home-page health badge opens the **Scan history** drawer, where only the latest
+attempt's registry issues, invalid plans, and scan diagnostics are shown, without
+aggregate issue counts. Refresh is available there only to a local viewer. The
+dashboard's All, Pending, Active, Open, and Closed views use the same workflow
+definitions as the CLI, with Open selected by default.
 
 Unauthenticated dashboards use lifecycle control protocol 2. Current Planrock
 can hand off a legacy authenticated protocol-1 dashboard, but older protocol-1

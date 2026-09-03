@@ -283,11 +283,21 @@ body {
   .filter-panel { padding: var(--mantine-spacing-md); }
   .filter-top-grid { grid-template-areas: "project search" "toggle toggle"; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--mantine-spacing-sm); }
   .project-toggle-row { grid-column: 1 / -1; }
+  .view-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: transparent; }
+  .view-selector .mantine-SegmentedControl-indicator { display: none; }
+  .view-selector .mantine-SegmentedControl-control { width: 100%; border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-5)); border-radius: var(--mantine-radius-sm); }
+  .view-selector .mantine-SegmentedControl-control::before { display: none; }
+  .view-selector .mantine-SegmentedControl-label { overflow: visible; white-space: nowrap; }
+  .view-selector .mantine-SegmentedControl-input:checked + .mantine-SegmentedControl-label { background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6)); }
   .plan-row-button { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 15px; }
   .plan-date-space { display: none; }
   .plan-identity { padding-right: 108px; }
   .plan-row:has(.plan-date[data-expanded]) .plan-identity { padding-right: 0; }
   .plan-progress { grid-column: 1 / -1; }
+}
+
+@media (max-width: 400px) {
+  .view-selector { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

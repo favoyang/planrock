@@ -55,10 +55,10 @@ export async function copyText(value) {
   if (!copied) throw new Error("Copy is unavailable in this browser");
 }
 
-export function filterPlans(plans, { view = "open", lifecycle, workflow, project, query }) {
+export function filterPlans(plans, { view = "open", lifecycle, workflow, project, query, onlyOpen = false }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const selectedView = lifecycle ? (lifecycle === "closed" ? "closed" : workflow === "all" ? "open" : workflow) : view;
-  return plans.filter((plan) => selectedView === "closed" ? plan.state === "closed" : plan.state === "open" && (selectedView === "open" || workflowState(plan) === selectedView)).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
+  return plans.filter((plan) => !onlyOpen || plan.state === "open").filter((plan) => selectedView === "all" || (selectedView === "closed" ? plan.state === "closed" : plan.state === "open" && (selectedView === "open" || workflowState(plan) === selectedView))).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
 }
 
 function parseTimestamp(value) {
@@ -336,20 +336,20 @@ function PlanDrawer({ plan, plans, onClose, nativeActionsAvailable }) {
 function HealthBadge({ state, disabled = false, onClick, buttonRef }) {
   const color = state === "healthy" ? "teal" : state === "loading" ? "gray" : "orange";
   const content = <><span className="health-dot" aria-hidden="true" />{state}</>;
-  return onClick ? <Button ref={buttonRef} className={`health-button ${state}`} variant="subtle" color={color} disabled={disabled} onClick={onClick}>{content}</Button> : <div className={`health-button health-status ${state}`} role="status" aria-label={`Index health: ${state}`}>{content}</div>;
+  return onClick ? <Button ref={buttonRef} className={`health-button ${state}`} variant="subtle" color={color} disabled={disabled} onClick={onClick}>{content}</Button> : <div className={`health-button health-status ${state}`} role="status" aria-label={`Scan history: ${state}`}>{content}</div>;
 }
 
 function DiagnosticItem({ item, scanTime }) {
   return <Paper className="diagnostic-item" withBorder p="md"><Group justify="space-between" align="flex-start" gap="sm"><Badge color={item.severity === "error" ? "red" : item.severity === "warning" ? "orange" : "gray"} variant="light">{item.severity || "info"}</Badge><Text size="xs" c="dimmed"><time dateTime={scanTime}>{formatFullDate(scanTime)}</time></Text></Group><Text mt="xs" fw={650}>{item.code}</Text><Text size="sm">{item.message}</Text>{(item.project || item.relativeFile) && <Text className="diagnostic-context" size="xs" c="dimmed">{[item.project, item.relativeFile].filter(Boolean).join(" · ")}</Text>}</Paper>;
 }
 
-function IndexHealth({ overview, healthState, refresh, refreshing, refreshAvailable, onBack }) {
+function ScanHistory({ opened, onClose, overview, healthState, refresh, refreshing, refreshAvailable, error }) {
   const scan = overview.latestScan;
   const invalidPlans = scan?.invalidPlans || [];
   const invalidDiagnosticKeys = new Set(invalidPlans.flatMap((plan) => (plan.diagnostics || []).map((item) => JSON.stringify([item.code, item.severity, item.message, item.project || plan.project || "", item.relativeFile || plan.relativeFile || ""]))));
   const diagnostics = (scan?.diagnostics || overview.diagnostics || []).filter((item) => !invalidDiagnosticKeys.has(JSON.stringify([item.code, item.severity, item.message, item.project || "", item.relativeFile || ""])));
   const hasIssues = diagnostics.length > 0 || invalidPlans.length > 0;
-  return <Stack gap="lg"><Group justify="space-between"><Button variant="subtle" autoFocus onClick={onBack}>Back to plans</Button><div className="refresh-control" title={!refreshAvailable ? "Refresh is available on the Planrock host machine only" : undefined}><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing || !refreshAvailable} aria-busy={refreshing} onClick={refresh}>Refresh</Button></div></Group>{scan && <Paper className="scan-summary" withBorder p="md"><Group justify="space-between" gap="md"><Text size="sm"><strong>Latest scan:</strong> {scan.outcome}</Text><Text size="sm" c="dimmed">{scan.durationMs} ms · {scan.trigger}</Text></Group></Paper>}{!scan && <Paper className="health-empty" withBorder><Text c="dimmed">{healthState === "loading" ? "Index health is loading." : "Latest scan health is unavailable."}</Text></Paper>}{scan && !hasIssues && <Paper className="health-empty" withBorder><Text c="dimmed">No issues in the latest scan.</Text></Paper>}{invalidPlans.length > 0 && <section aria-labelledby="invalid-plans-heading"><Text id="invalid-plans-heading" className="section-kicker" component="h2" mb="sm">Invalid plans</Text><Stack gap="sm">{invalidPlans.map((plan, index) => (plan.diagnostics?.length ? plan.diagnostics : [{ code: "PLAN_INVALID", severity: "error", message: "Plan is invalid" }]).map((item, itemIndex) => <DiagnosticItem key={`invalid-${index}-${itemIndex}`} item={{ ...item, project: item.project || plan.project, relativeFile: item.relativeFile || plan.relativeFile }} scanTime={scan.finishedAt} />))}</Stack></section>}{diagnostics.length > 0 && <section aria-labelledby="scan-diagnostics-heading"><Text id="scan-diagnostics-heading" className="section-kicker" component="h2" mb="sm">Scan diagnostics</Text><Stack gap="sm">{diagnostics.map((item, index) => <DiagnosticItem key={`${item.code}-${index}`} item={item} scanTime={scan?.finishedAt || overview.refreshedAt} />)}</Stack></section>}</Stack>;
+  return <Drawer opened={opened} onClose={onClose} title="Scan history" position="right" size="lg"><Stack gap="lg"><Group justify="space-between" align="center"><HealthBadge state={healthState} /><div className="refresh-control" title={!refreshAvailable ? "Refresh is available on the Planrock host machine only" : undefined}><Button className={`refresh-button ${refreshing ? "refreshing" : ""}`} variant="default" miw={112} disabled={refreshing || !refreshAvailable} aria-busy={refreshing} onClick={refresh}>Refresh</Button></div></Group>{error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}{scan && <Paper className="scan-summary" withBorder p="md"><Group justify="space-between" gap="md"><Text size="sm"><strong>Latest scan:</strong> {scan.outcome}</Text><Text size="sm" c="dimmed">{scan.durationMs} ms · {scan.trigger}</Text></Group></Paper>}{!scan && <Paper className="health-empty" withBorder><Text c="dimmed">{healthState === "loading" ? "Scan history is loading." : "Latest scan is unavailable."}</Text></Paper>}{scan && !hasIssues && <Paper className="health-empty" withBorder><Text c="dimmed">No issues in the latest scan.</Text></Paper>}{invalidPlans.length > 0 && <section aria-labelledby="invalid-plans-heading"><Text id="invalid-plans-heading" className="section-kicker" component="h2" mb="sm">Invalid plans</Text><Stack gap="sm">{invalidPlans.map((plan, index) => (plan.diagnostics?.length ? plan.diagnostics : [{ code: "PLAN_INVALID", severity: "error", message: "Plan is invalid" }]).map((item, itemIndex) => <DiagnosticItem key={`invalid-${index}-${itemIndex}`} item={{ ...item, project: item.project || plan.project, relativeFile: item.relativeFile || plan.relativeFile }} scanTime={scan.finishedAt} />))}</Stack></section>}{diagnostics.length > 0 && <section aria-labelledby="scan-diagnostics-heading"><Text id="scan-diagnostics-heading" className="section-kicker" component="h2" mb="sm">Scan diagnostics</Text><Stack gap="sm">{diagnostics.map((item, index) => <DiagnosticItem key={`${item.code}-${index}`} item={item} scanTime={scan?.finishedAt || overview.refreshedAt} />)}</Stack></section>}</Stack></Drawer>;
 }
 
 export function App() {
@@ -359,9 +359,9 @@ export function App() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("open");
   const [project, setProject] = useState(null);
-  const [onlyOpenProjects, setOnlyOpenProjects] = useState(true);
+  const [onlyOpenPlans, setOnlyOpenPlans] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
-  const [page, setPage] = useState("home");
+  const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -388,37 +388,39 @@ export function App() {
 
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, []);
 
-  const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenProjects || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories, onlyOpenProjects]);
+  const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenPlans || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories, onlyOpenPlans]);
   useEffect(() => { if (project && !projectOptions.some((option) => option.value === project)) setProject(null); }, [project, projectOptions]);
 
-  const filtered = useMemo(() => filterPlans(allPlans, { view, project, query }), [allPlans, view, project, query]);
+  const filtered = useMemo(() => filterPlans(allPlans, { view, project, query, onlyOpen: onlyOpenPlans }), [allPlans, view, project, query, onlyOpenPlans]);
+  const viewOptions = useMemo(() => [["all", "All"], ["pending", "Pending"], ["active", "Active"], ["open", "Open"], ["closed", "Closed"]].map(([value, label]) => ({ value, label: `${label} ${filterPlans(allPlans, { view: value, project, query, onlyOpen: onlyOpenPlans }).length}` })), [allPlans, project, query, onlyOpenPlans]);
   const selected = useMemo(() => selectedId ? allPlans.find((plan) => plan.id === selectedId) || null : null, [allPlans, selectedId]);
 
   async function refresh() { const startedAt = Date.now(); try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { const remaining = Math.max(0, 800 - (Date.now() - startedAt)); if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining)); setRefreshing(false); } }
   function restoreOverlayFocus() { requestAnimationFrame(() => overlayTrigger.current?.focus()); }
   function closePlan() { setSelectedId(null); restoreOverlayFocus(); }
+  function closeScanHistory() { setScanHistoryOpen(false); requestAnimationFrame(() => healthTrigger.current?.focus()); }
   const healthState = refreshing ? "loading" : refreshFailed ? "stale" : overview ? (overview.health?.state || (overview.incomplete ? "degraded" : "healthy")) : "loading";
   const refreshAvailable = overview?.nativeActions === true;
 
   return <MantineProvider theme={theme} defaultColorScheme="auto">
     <div className="page-shell">
-      <header className="dashboard-navbar"><div className="content-shell header-shell"><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>{page === "health" ? "Index health" : "Dashboard"}</Title></div><Group className="header-actions" gap="sm" align="flex-start"><HealthBadge state={healthState} disabled={!overview} buttonRef={healthTrigger} onClick={page === "home" ? () => setPage("health") : undefined} />{page === "home" && overview && <RefreshedTime value={overview.refreshedAt} />}</Group></div></div></header>
+      <header className="dashboard-navbar"><div className="content-shell header-shell"><div className="dashboard-header"><div><Group gap="xs"><Text className="brand-mark">PLANROCK</Text><Text size="xs" c="dimmed">v{packageJson.version}</Text></Group><Title order={1}>Dashboard</Title></div><Stack className="header-actions" gap={0} align="flex-end"><HealthBadge state={healthState} disabled={!overview} buttonRef={healthTrigger} onClick={() => setScanHistoryOpen(true)} />{overview && <RefreshedTime value={overview.refreshedAt} />}</Stack></div></div></header>
       <main className="content-shell main-shell">
-      {error && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
-      {overview && page === "home" && <Stack gap="lg">
+      {error && !scanHistoryOpen && <Paper role="alert" className="alert" withBorder>{error}</Paper>}
+      {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
           <div className="filter-top-grid">
             <div className="filter-field project-field"><Group className="filter-heading" justify="space-between" gap="sm"><Text className="filter-label">Project</Text><Text className="filter-count" size="xs" c="dimmed">{projectOptions.length} of {repositories.length}</Text></Group><Select aria-label="Project" placeholder="All" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
             <div className="filter-field search-field"><div className="filter-heading"><Text className="filter-label">Search</Text></div><TextInput aria-label="Search plans" placeholder="Search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></div>
-            <div className="project-toggle-row"><Switch label="Only projects with open plans" checked={onlyOpenProjects} onChange={(event) => setOnlyOpenProjects(event.currentTarget.checked)} /></div>
+            <div className="project-toggle-row"><Switch label="Open plans only" checked={onlyOpenPlans} onChange={(event) => setOnlyOpenPlans(event.currentTarget.checked)} /></div>
           </div>
           <Divider my="md" />
-            <div><div className="filter-heading"><Text className="filter-label">View</Text></div><SegmentedControl className="view-selector" aria-label="Plan view" size="xs" fullWidth value={view} onChange={setView} data={[{ value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "open", label: "Open" }, { value: "closed", label: "Closed" }]} /></div>
+            <div><div className="filter-heading"><Text className="filter-label">State</Text></div><SegmentedControl className="view-selector" aria-label="Plan state" size="xs" fullWidth value={view} onChange={setView} data={viewOptions} /></div>
         </Paper>
         <PlanList plans={filtered} onSelect={(plan, trigger) => { overlayTrigger.current = trigger; setSelectedId(plan.id); }} />
       </Stack>}
       {selected && <PlanDrawer plan={selected} plans={allPlans} onClose={closePlan} nativeActionsAvailable={overview?.nativeActions === true} />}
-      {overview && page === "health" && <IndexHealth overview={overview} healthState={healthState} refresh={refresh} refreshing={refreshing} refreshAvailable={refreshAvailable} onBack={() => { setPage("home"); requestAnimationFrame(() => healthTrigger.current?.focus()); }} />}
+      {overview && <ScanHistory opened={scanHistoryOpen} onClose={closeScanHistory} overview={overview} healthState={healthState} refresh={refresh} refreshing={refreshing} refreshAvailable={refreshAvailable} error={error} />}
       </main>
     </div>
   </MantineProvider>;
