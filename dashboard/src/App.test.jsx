@@ -34,8 +34,6 @@ describe("dashboard workflow", () => {
       { state: "closed", checklistDone: 0, agentSessions: [], title: "Closed", projectName: "Repo", relativeFile: "closed.md" },
     ];
     expect(filterPlans(plans, { view: "all", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending", "Active", "Closed"]);
-    expect(filterPlans(plans, { view: "all", project: null, query: "", onlyOpen: true }).map((plan) => plan.title)).toEqual(["Pending", "Active"]);
-    expect(filterPlans(plans, { view: "closed", project: null, query: "", onlyOpen: true })).toEqual([]);
     expect(filterPlans(plans, { view: "pending", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending"]);
     expect(filterPlans(plans, { view: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Active"]);
     expect(filterPlans(plans, { view: "open", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending", "Active"]);
@@ -170,25 +168,18 @@ describe("dashboard navigation", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<App />);
 
-    await screen.findByText("2 of 3");
+    await screen.findByRole("combobox", { name: "Project" });
     expect(container).toHaveTextContent(`v${packageJson.version}`);
     const refreshedTime = screen.getByRole("button", { name: /^Refreshed .*; show full timestamp$/ });
     expect(refreshedTime).toHaveTextContent(/^Refreshed .* ago$/); fireEvent.click(refreshedTime); expect(refreshedTime).toHaveAccessibleName(/^Aug 30, 2026.*; show relative time$/);
     const viewControl = screen.getByRole("radiogroup", { name: "Plan state" });
-    expect(viewControl).toHaveTextContent("All 2Pending 1Active 1Open 2Closed 0");
+    expect(viewControl).toHaveTextContent("All 3Pending 1Active 1Open 2Closed 1");
     expect(container.textContent).toContain("Pending plan");
     expect(container.textContent).toContain("Active plan");
     expect(container.textContent).not.toContain("Closed early");
-    const openPlansSwitch = screen.getByRole("switch", { name: "Open plans only" });
-    expect(openPlansSwitch).toBeChecked();
-    fireEvent.click(openPlansSwitch);
-    await screen.findByText("3 of 3");
-    expect(viewControl).toHaveTextContent("All 3Pending 1Active 1Open 2Closed 1");
     fireEvent.click(screen.getByRole("radio", { name: "All 3" }));
     expect(await screen.findByRole("heading", { name: "Plans - 3 matching" })).toBeInTheDocument();
     expect(container.textContent).toContain("Closed early");
-    fireEvent.click(openPlansSwitch);
-    await screen.findByText("2 of 3");
     fireEvent.click(screen.getByRole("radio", { name: "Open 2" }));
     expect(screen.getByRole("heading", { name: "Plans - 2 matching" })).toHaveClass("section-kicker");
     const pendingTitleLine = screen.getByRole("heading", { name: "Pending plan" }).closest(".plan-title-line");
@@ -260,7 +251,7 @@ describe("dashboard navigation", () => {
 
     const projectInput = container.querySelector('input[aria-label="Project"]');
     fireEvent.click(projectInput);
-    await waitFor(() => expect(document.querySelectorAll('[role="option"]')).toHaveLength(2));
+    await waitFor(() => expect(document.querySelectorAll('[role="option"]')).toHaveLength(3));
     const longOption = [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("deliberately extremely long"));
     expect(longOption).toHaveTextContent("This project name is deliberately extremely long for dropdown alignment12 open");
     expect(longOption.querySelector(".project-option-name")).toHaveTextContent("This project name is deliberately extremely long for dropdown alignment");

@@ -13,7 +13,8 @@ const { DEFAULT_PORT, STORAGE_DIR } = require("../lib/constants");
 
 test("dashboard uses Mantine 9 with the accepted accessible information architecture", () => {
   assert.match(source, /from "@mantine\/core"/); assert.match(source, /<MantineProvider theme=\{theme\} defaultColorScheme="auto">/);
-  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Open plans only", "Scan history", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
+  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Scan history", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
+  assert.doesNotMatch(source, /Open plans only|onlyOpenPlans|filter-count/);
   assert.match(source, /aria-label="Plan state"/); assert.doesNotMatch(source, /aria-label="Plan view"|aria-label="Plan lifecycle"|aria-label="Plan progress"/);
   assert.match(source, /useId\(\)/); assert.match(source, /overview\.health\?\.state/);
   assert.match(source, /workflowState\(plan\)/);
@@ -37,8 +38,7 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.refresh-control \{[^}]*justify-items: end;[^}]*font-variant-numeric: tabular-nums;/s);
   assert.match(source, /v\{packageJson\.version\}/); assert.doesNotMatch(source, /Saved plans/);
   assert.match(styles, /\.content-shell \{[^}]*1200px[^}]*padding-inline: 32px;/s);
-  assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search" "toggle \.";[^}]*grid-template-columns: minmax\(0, 2fr\) minmax\(0, 3fr\);/s);
-  assert.match(source, /className="filter-count"[^>]*>\{projectOptions\.length\} of \{repositories\.length\}/);
+  assert.match(styles, /\.filter-top-grid \{[^}]*grid-template-areas: "project search";[^}]*grid-template-columns: minmax\(0, 2fr\) minmax\(0, 3fr\);/s);
   assert.equal((source.match(/<SegmentedControl[^>]*size="xs"/g) || []).length, 1);
   assert.match(styles, /\.view-selector \.mantine-SegmentedControl-label \{[^}]*padding-inline: 4px;[^}]*font-size: var\(--mantine-font-size-xs\);/s);
   assert.match(styles, /\.plan-date\[data-expanded\] \{ position: static; display: block; width: 100%;/);
@@ -78,7 +78,7 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(source, /formatRelativeDate\(value\)/);
   assert.match(source, /Use plan reference: \$\{nativeActionsAvailable \? plan\.absolutePath :/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);
-  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*grid-template-areas: "project search" "toggle toggle"/);
+  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*grid-template-areas: "project search";/);
   assert.match(styles, /@media \(max-width: 600px\)[\s\S]*\.view-selector \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
   assert.match(styles, /@media \(max-width: 400px\) \{[\s\S]*\.view-selector \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
   assert.match(source, /error && !scanHistoryOpen/);
