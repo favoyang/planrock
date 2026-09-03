@@ -14,7 +14,6 @@ import {
   SegmentedControl,
   Select,
   Stack,
-  Switch,
   Text,
   TextInput,
   Title,
@@ -55,10 +54,10 @@ export async function copyText(value) {
   if (!copied) throw new Error("Copy is unavailable in this browser");
 }
 
-export function filterPlans(plans, { view = "open", lifecycle, workflow, project, query, onlyOpen = false }) {
+export function filterPlans(plans, { view = "open", lifecycle, workflow, project, query }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const selectedView = lifecycle ? (lifecycle === "closed" ? "closed" : workflow === "all" ? "open" : workflow) : view;
-  return plans.filter((plan) => !onlyOpen || plan.state === "open").filter((plan) => selectedView === "all" || (selectedView === "closed" ? plan.state === "closed" : plan.state === "open" && (selectedView === "open" || workflowState(plan) === selectedView))).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
+  return plans.filter((plan) => selectedView === "all" || (selectedView === "closed" ? plan.state === "closed" : plan.state === "open" && (selectedView === "open" || workflowState(plan) === selectedView))).filter((plan) => !project || plan.projectId === project).filter((plan) => `${plan.title} ${plan.projectName} ${plan.relativeFile}`.toLocaleLowerCase().includes(normalizedQuery));
 }
 
 function parseTimestamp(value) {
@@ -359,7 +358,6 @@ export function App() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("open");
   const [project, setProject] = useState(null);
-  const [onlyOpenPlans, setOnlyOpenPlans] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
   const [error, setError] = useState("");
@@ -388,11 +386,11 @@ export function App() {
 
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, []);
 
-  const projectOptions = useMemo(() => repositories.filter((repository) => !onlyOpenPlans || repository.counts.open > 0).map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories, onlyOpenPlans]);
+  const projectOptions = useMemo(() => repositories.map((repository) => ({ value: repository.id, label: repository.displayName, openCount: repository.counts.open })), [repositories]);
   useEffect(() => { if (project && !projectOptions.some((option) => option.value === project)) setProject(null); }, [project, projectOptions]);
 
-  const filtered = useMemo(() => filterPlans(allPlans, { view, project, query, onlyOpen: onlyOpenPlans }), [allPlans, view, project, query, onlyOpenPlans]);
-  const viewOptions = useMemo(() => [["all", "All"], ["pending", "Pending"], ["active", "Active"], ["open", "Open"], ["closed", "Closed"]].map(([value, label]) => ({ value, label: `${label} ${filterPlans(allPlans, { view: value, project, query, onlyOpen: onlyOpenPlans }).length}` })), [allPlans, project, query, onlyOpenPlans]);
+  const filtered = useMemo(() => filterPlans(allPlans, { view, project, query }), [allPlans, view, project, query]);
+  const viewOptions = useMemo(() => [["all", "All"], ["pending", "Pending"], ["active", "Active"], ["open", "Open"], ["closed", "Closed"]].map(([value, label]) => ({ value, label: `${label} ${filterPlans(allPlans, { view: value, project, query }).length}` })), [allPlans, project, query]);
   const selected = useMemo(() => selectedId ? allPlans.find((plan) => plan.id === selectedId) || null : null, [allPlans, selectedId]);
 
   async function refresh() { const startedAt = Date.now(); try { setRefreshing(true); setRefreshFailed(false); setError(""); await api("/api/refresh", { method: "POST", body: "{}" }); await load(); } catch (reason) { setRefreshFailed(true); setError(reason.message); } finally { const remaining = Math.max(0, 800 - (Date.now() - startedAt)); if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining)); setRefreshing(false); } }
@@ -410,9 +408,8 @@ export function App() {
       {overview && <Stack gap="lg">
         <Paper className="filter-panel" withBorder>
           <div className="filter-top-grid">
-            <div className="filter-field project-field"><Group className="filter-heading" justify="space-between" gap="sm"><Text className="filter-label">Project</Text><Text className="filter-count" size="xs" c="dimmed">{projectOptions.length} of {repositories.length}</Text></Group><Select aria-label="Project" placeholder="All" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
+            <div className="filter-field project-field"><div className="filter-heading"><Text className="filter-label">Project</Text></div><Select aria-label="Project" placeholder="All" clearable searchable value={project} onChange={setProject} data={projectOptions} nothingFoundMessage="No projects" renderOption={({ option }) => <Group className="project-option" justify="space-between" gap="md" wrap="nowrap" w="100%"><Text className="project-option-name" size="sm" truncate>{option.label}</Text><Text className="project-option-count" size="xs">{option.openCount} open</Text></Group>} /></div>
             <div className="filter-field search-field"><div className="filter-heading"><Text className="filter-label">Search</Text></div><TextInput aria-label="Search plans" placeholder="Search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></div>
-            <div className="project-toggle-row"><Switch label="Open plans only" checked={onlyOpenPlans} onChange={(event) => setOnlyOpenPlans(event.currentTarget.checked)} /></div>
           </div>
           <Divider my="md" />
             <div><div className="filter-heading"><Text className="filter-label">State</Text></div><SegmentedControl className="view-selector" aria-label="Plan state" size="xs" fullWidth value={view} onChange={setView} data={viewOptions} /></div>
