@@ -21,6 +21,8 @@ node <skill-dir>/scripts/planrock open --working-dir <working-dir>
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --sort time
 node <skill-dir>/scripts/planrock open --working-dir <working-dir> --full-agent-session
 node <skill-dir>/scripts/planrock closed --working-dir <working-dir>
+node <skill-dir>/scripts/planrock create <slug> --title "<short title>" --priority P2 --working-dir <working-dir>
+node <skill-dir>/scripts/planrock validate [<working-dir>/plans/<plan>.md] --working-dir <working-dir>
 node <skill-dir>/scripts/planrock goal <working-dir>/plans/<plan>.md
 ```
 
@@ -41,6 +43,11 @@ Use `plans/` directly under the current working directory as the convention. Do 
 - `active`: Show open plans with at least one checked checklist item or agent session.
 - `open`: Show all pending and active plans as a backward-compatible aggregate, priority first and then newest `created_at`.
 - `closed`: Show all closed plans, newest `closed_at` first.
+- `create <slug> --title <short-title>`: Create a non-overwriting canonical
+  plan template under `plans/`; optionally select `--priority P0-P4`.
+- `validate [path-to-plan]`: Strictly validate one plan, or every direct
+  `plans/*.md` file when no path is supplied. Warnings and errors both produce
+  a non-zero exit so inconsistent but processable metadata cannot pass.
 - `goal <path-to-plan>`: Print a copy-pasteable Codex `/goal` command from the
   body of the plan's `## Goal` section, ending with a stable `plans/...`
   reference for the original plan file.
@@ -58,7 +65,7 @@ malformed frontmatter are invalid and excluded from lifecycle and workflow
 collections. The local CLI retains legacy tolerance for unsupported nested
 fields and uses the last duplicate scalar key.
 
-The CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, and `closed_at`, reads list frontmatter key `agent_sessions`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
+Except for `create`, the repository-local CLI is read-only. It parses Markdown files directly under `plans/`, reads scalar YAML frontmatter keys `title`, `state`, `priority`, `created_at`, and `closed_at`, reads list frontmatter key `agent_sessions`, and counts checklist items matching `- [ ]` and `- [x]`. Plans without `priority` are treated as `P2`.
 
 ## Agent Sessions
 
@@ -83,22 +90,17 @@ Use these `priority` values in frontmatter:
 
 ## Creating A Plan
 
-When the user asks to create a saved plan, create a Markdown file directly under `<working-dir>/plans/`. If no `plans/` directory exists in the current working directory, warn the user and create `plans/` only when the user has asked to create a saved plan there.
-
-Use this frontmatter:
-
-```yaml
----
-title: <short title>
-state: open
-priority: P2
-created_at: <YYYY-MM-DD>
-agent_sessions: []
----
-```
-
-Then write a concise checklist of concrete implementation steps using `- [ ]`.
-The new plan is pending until a checklist item is checked or an agent session is recorded.
+When the user asks to create a saved plan, run
+`node <skill-dir>/scripts/planrock create <slug> --title "<short title>" --priority <P0-P4> --working-dir <working-dir>`.
+The command
+creates `plans/` when needed, refuses to overwrite an existing plan, and fills
+canonical lifecycle, date, priority, and session metadata. Replace the
+generated Goal and Steps placeholders with the user's concrete outcome and a
+concise checklist, then run
+`node <skill-dir>/scripts/planrock validate <path> --working-dir <working-dir>`.
+Do not report creation
+complete until validation exits successfully. The new plan is pending until a
+checklist item is checked or an agent session is recorded.
 
 ## Continuing A Plan
 
@@ -114,7 +116,12 @@ When the user asks to continue, implement, or inspect a specific saved plan:
 8. Summarize the reconciled state and identify the next concrete unchecked step.
 9. Keep the plan checklist current during execution. Mark completed items with `- [x]` soon after completing them so progress can sync through the saved plan.
 10. After completing a plan item, update the plan file if appropriate and state the next concrete step.
-11. When a plan is genuinely complete, close it according to that working directory's plan rules.
+11. After every plan mutation, including checklist, session, metadata, and
+    closure changes, run
+    `node <skill-dir>/scripts/planrock validate <path> --working-dir <working-dir>`
+    and correct every reported
+    warning or error before continuing.
+12. When a plan is genuinely complete, close it according to that working directory's plan rules and validate the closed plan again.
 
 Agent sessions frontmatter example:
 
