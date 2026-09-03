@@ -13,8 +13,8 @@ const { DEFAULT_PORT, STORAGE_DIR } = require("../lib/constants");
 
 test("dashboard uses Mantine 9 with the accepted accessible information architecture", () => {
   assert.match(source, /from "@mantine\/core"/); assert.match(source, /<MantineProvider theme=\{theme\} defaultColorScheme="auto">/);
-  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Only projects with open plans", "Index health", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
-  assert.match(source, /aria-label="Plan view"/); assert.doesNotMatch(source, /aria-label="Plan lifecycle"|aria-label="Plan progress"/);
+  for (const label of ["Search plans", "Project", "Open", "Closed", "Pending", "Active", "Open plans only", "Scan history", "Plan details", "Copy goal command"]) assert.match(source, new RegExp(label.replace(/[&]/g, "&")));
+  assert.match(source, /aria-label="Plan state"/); assert.doesNotMatch(source, /aria-label="Plan view"|aria-label="Plan lifecycle"|aria-label="Plan progress"/);
   assert.match(source, /useId\(\)/); assert.match(source, /overview\.health\?\.state/);
   assert.match(source, /workflowState\(plan\)/);
   assert.match(source, /openCount: repository\.counts\.open/);
@@ -45,11 +45,11 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-row-button \{ grid-template-columns: minmax\(260px, 1fr\) minmax\(180px, 250px\); \}/);
   assert.match(styles, /\.plan-row:has\(\.plan-date\[data-expanded\]\) \.plan-identity \{ padding-right: 0; \}/);
   assert.match(source, /className="refresh-control"/); assert.doesNotMatch(source, /refresh-meta/);
-  assert.match(source, /page === "home" && overview && <RefreshedTime/);
-  assert.match(source, /page === "health" && <IndexHealth/);
-  assert.doesNotMatch(source, /invalid\} invalid|diagnostics shown|Current state|Registry and health/);
+  assert.match(source, /<Stack className="header-actions" gap=\{0\} align="flex-end">/);
+  assert.match(source, /<ScanHistory opened=\{scanHistoryOpen\}/);
+  assert.doesNotMatch(source, /invalid\} invalid|diagnostics shown|Current state|Registry and health|Index health/);
   assert.match(source, /const healthState = refreshing \? "loading" : refreshFailed \? "stale"/);
-  assert.match(source, /Latest scan health is unavailable\./);
+  assert.match(source, /Latest scan is unavailable\./);
   assert.match(source, /scan && !hasIssues/);
   assert.match(source, /className="dashboard-navbar"/);
   assert.match(styles, /\.dashboard-navbar \{ border-bottom: 1px solid var\(--mantine-color-gray-3\); \}/);
@@ -79,6 +79,10 @@ test("dashboard uses Mantine 9 with the accepted accessible information architec
   assert.match(source, /Use plan reference: \$\{nativeActionsAvailable \? plan\.absolutePath :/);
   assert.doesNotMatch(source, /Next up|summary-grid|removeBootstrapFragment/);
   assert.match(styles, /@media \(max-width: 600px\)[\s\S]*grid-template-areas: "project search" "toggle toggle"/);
+  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*\.view-selector \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.match(styles, /@media \(max-width: 400px\) \{[\s\S]*\.view-selector \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(source, /error && !scanHistoryOpen/);
+  assert.match(source, /<ScanHistory[^>]*error=\{error\}/);
 });
 
 test("release commits version manifests and the version-dependent dashboard build", () => {

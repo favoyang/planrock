@@ -27,12 +27,15 @@ describe("dashboard workflow", () => {
     expect(workflowState({ state: "closed", checklistDone: 0, agentSessions: [] })).toBe("closed");
   });
 
-  it("filters pending, active, open, and closed views by shared workflow semantics", () => {
+  it("filters all, pending, active, open, and closed views by shared workflow semantics", () => {
     const plans = [
       { state: "open", checklistDone: 0, agentSessions: [], title: "Pending", projectName: "Repo", relativeFile: "pending.md" },
       { state: "open", checklistDone: 1, agentSessions: [], title: "Active", projectName: "Repo", relativeFile: "active.md" },
       { state: "closed", checklistDone: 0, agentSessions: [], title: "Closed", projectName: "Repo", relativeFile: "closed.md" },
     ];
+    expect(filterPlans(plans, { view: "all", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending", "Active", "Closed"]);
+    expect(filterPlans(plans, { view: "all", project: null, query: "", onlyOpen: true }).map((plan) => plan.title)).toEqual(["Pending", "Active"]);
+    expect(filterPlans(plans, { view: "closed", project: null, query: "", onlyOpen: true })).toEqual([]);
     expect(filterPlans(plans, { view: "pending", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending"]);
     expect(filterPlans(plans, { view: "active", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Active"]);
     expect(filterPlans(plans, { view: "open", project: null, query: "" }).map((plan) => plan.title)).toEqual(["Pending", "Active"]);
@@ -101,7 +104,7 @@ describe("dashboard navigation", () => {
     expect(screen.getByRole("heading", { name: "Plans - 1 matching" })).toBeInTheDocument();
   }, 90_000);
 
-  it("keeps an open detail drawer synchronized after refresh", async () => {
+  it("loads refreshed plan details after refreshing from scan history", async () => {
     let currentPlan = { id: "refresh-plan", projectId: "repo", projectName: "Repo", title: "Original title", state: "open", priority: "P2", checklistDone: 0, checklistTotal: 1, agentSessions: [], relativeFile: "plans/refresh.md", absolutePath: "/tmp/plans/refresh.md", fingerprint: "first", createdAt: "2026-08-30", updatedAt: "2026-08-30T06:00:00.000Z" };
     let linkedPlan = { ...currentPlan, id: "linked-plan", title: "Linked original", relativeFile: "plans/linked.md", absolutePath: "/tmp/plans/linked.md", fingerprint: "linked-first" };
     let currentSource = "## Goal\n\nOriginal body. Open the [linked plan](linked.md).";
@@ -127,8 +130,12 @@ describe("dashboard navigation", () => {
     linkedPlan = { ...linkedPlan, title: "Linked updated", fingerprint: "linked-second", updatedAt: "2026-09-01T07:00:00.000Z" };
     currentSource = "## Goal\n\nFresh parent body. Open the [linked plan](linked.md).";
     linkedSource = "## Goal\n\nFresh linked body.";
+    const detailCloseButtons = document.querySelectorAll(".mantine-Drawer-close"); fireEvent.click(detailCloseButtons[1]); await waitFor(() => expect(screen.getAllByRole("dialog", { name: "Plan details" })).toHaveLength(1)); fireEvent.click(document.querySelector(".mantine-Drawer-close")); await waitFor(() => expect(screen.queryByRole("dialog", { name: "Plan details" })).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "healthy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+    fireEvent.click(document.querySelector(".mantine-Drawer-close"));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Updated title" }));
+    fireEvent.click(await screen.findByRole("button", { name: "linked plan" }));
 
     expect(await screen.findByRole("heading", { name: "Updated title", level: 2 })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Linked updated", level: 2 })).toBeInTheDocument();
@@ -137,7 +144,7 @@ describe("dashboard navigation", () => {
     expect(screen.queryByRole("heading", { name: "Linked original", level: 2 })).toBeNull();
   }, 90_000);
 
-  it("shows the compact view selector and the dedicated index-health refresh surface", async () => {
+  it("shows the compact state selector and the Scan history drawer", async () => {
     let resolveRefresh;
     let rejectRefresh;
     const repositories = [
@@ -167,12 +174,22 @@ describe("dashboard navigation", () => {
     expect(container).toHaveTextContent(`v${packageJson.version}`);
     const refreshedTime = screen.getByRole("button", { name: /^Refreshed .*; show full timestamp$/ });
     expect(refreshedTime).toHaveTextContent(/^Refreshed .* ago$/); fireEvent.click(refreshedTime); expect(refreshedTime).toHaveAccessibleName(/^Aug 30, 2026.*; show relative time$/);
-    const viewControl = screen.getByRole("radiogroup", { name: "Plan view" });
-    expect(viewControl).toHaveTextContent("PendingActiveOpenClosed");
-    expect(viewControl).not.toHaveTextContent(/Open 2|Closed 1|Pending 1|Active 1/);
+    const viewControl = screen.getByRole("radiogroup", { name: "Plan state" });
+    expect(viewControl).toHaveTextContent("All 2Pending 1Active 1Open 2Closed 0");
     expect(container.textContent).toContain("Pending plan");
     expect(container.textContent).toContain("Active plan");
-    expect(container.querySelector('input[type="checkbox"]')).toBeChecked();
+    expect(container.textContent).not.toContain("Closed early");
+    const openPlansSwitch = screen.getByRole("switch", { name: "Open plans only" });
+    expect(openPlansSwitch).toBeChecked();
+    fireEvent.click(openPlansSwitch);
+    await screen.findByText("3 of 3");
+    expect(viewControl).toHaveTextContent("All 3Pending 1Active 1Open 2Closed 1");
+    fireEvent.click(screen.getByRole("radio", { name: "All 3" }));
+    expect(await screen.findByRole("heading", { name: "Plans - 3 matching" })).toBeInTheDocument();
+    expect(container.textContent).toContain("Closed early");
+    fireEvent.click(openPlansSwitch);
+    await screen.findByText("2 of 3");
+    fireEvent.click(screen.getByRole("radio", { name: "Open 2" }));
     expect(screen.getByRole("heading", { name: "Plans - 2 matching" })).toHaveClass("section-kicker");
     const pendingTitleLine = screen.getByRole("heading", { name: "Pending plan" }).closest(".plan-title-line");
     expect(pendingTitleLine.querySelector(".priority")).toHaveTextContent("P2");
@@ -257,11 +274,12 @@ describe("dashboard navigation", () => {
 
     const healthButton = container.querySelector(".health-button");
     expect(healthButton).toHaveTextContent("healthy");
+    expect(healthButton.parentElement).toContainElement(refreshedTime);
+    expect(healthButton.compareDocumentPosition(refreshedTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     fireEvent.click(healthButton);
-    expect(await screen.findByRole("heading", { name: "Index health" })).toBeInTheDocument();
-    const backButton = screen.getByRole("button", { name: "Back to plans" }); await waitFor(() => expect(backButton).toHaveFocus());
-    const healthStatus = screen.getByRole("status", { name: "Index health: healthy" }); expect(healthStatus).toHaveTextContent("healthy"); expect(screen.queryByRole("button", { name: "healthy" })).toBeNull();
+    expect(await screen.findByRole("dialog", { name: "Scan history" })).toBeInTheDocument();
+    const healthStatus = screen.getByRole("status", { name: "Scan history: healthy" }); expect(healthStatus).toHaveTextContent("healthy");
     expect(screen.queryByText(/invalid$/)).toBeNull(); expect(screen.queryByText(/diagnostics shown/)).toBeNull();
     expect(screen.getByText("Invalid plans")).toBeInTheDocument(); expect(screen.getAllByText("PLAN_STATE_INVALID")).toHaveLength(1); expect(screen.getAllByText("Active repo · plans/broken.md")).toHaveLength(1);
     expect(screen.getByText("Scan diagnostics")).toBeInTheDocument(); expect(screen.getByText("PROJECT_ROOT_UNAVAILABLE")).toBeInTheDocument(); expect(screen.getByText("Missing repo")).toBeInTheDocument();
@@ -275,8 +293,11 @@ describe("dashboard navigation", () => {
     await waitFor(() => expect(healthStatus).toHaveTextContent("loading"));
     rejectRefresh(new Error("Refresh unavailable"));
     await waitFor(() => expect(healthStatus).toHaveTextContent("stale"));
-    expect(container.querySelector('[role="alert"]')).toHaveTextContent("Refresh unavailable");
-    fireEvent.click(backButton); await waitFor(() => expect(container.querySelector(".health-button")).toHaveFocus());
+    const refreshAlert = screen.getByRole("alert");
+    expect(refreshAlert).toHaveTextContent("Refresh unavailable");
+    expect(refreshAlert.closest('[role="dialog"]')).toHaveAccessibleName("Scan history");
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    fireEvent.click(document.querySelector(".mantine-Drawer-close")); await waitFor(() => expect(container.querySelector(".health-button")).toHaveFocus());
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bootstrap"))).toBe(false);
   }, 300_000);

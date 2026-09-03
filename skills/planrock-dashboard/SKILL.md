@@ -25,8 +25,8 @@ without authentication in this early version. URLs returned by `start` and
 `open` are plain local URLs. Preserve the CLI's identity-safe behavior around
 unknown occupied ports rather than signaling processes directly.
 
-Use the shared health badge to open **Index health**. It reports only the
+Use the shared health badge to open the **Scan history** drawer. It reports only the
 latest scan attempt while retaining the last usable index after a failed
 refresh. Refresh and native actions remain local-only; remote viewers are
-read-only. Pending, Active, Open, and Closed match the CLI workflow views, and
-Open is the default.
+read-only. All, Pending, Active, Open, and Closed match the CLI workflow views,
+and Open is the default.
