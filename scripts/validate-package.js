@@ -30,7 +30,7 @@ for (const [name, expected] of Object.entries(licensed.packages)) { const metada
 const packed = JSON.parse(run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", temporary]));
 assert.equal(packed.length, 1);
 const tarball = path.join(temporary, packed[0].filename);
-for (const required of ["lib/indexer.js", "scripts/planrock", "SKILL.md", "skills/planrock-bootstrap/SKILL.md", "skills/planrock-dashboard/SKILL.md", "dist/dashboard/index.html", "dist/dashboard/dependency-inventory.json", ...new Set(Object.values(licensed.packages).map((entry) => entry.licenseFile)), "LICENSES/production-bundle.json", "THIRD_PARTY_NOTICES.md"]) assert.ok(packed[0].files.some((file) => file.path === required), `missing ${required}`);
+for (const required of ["lib/indexer.js", "scripts/planrock", "SKILL.md", "references/commands.md", "skills/planrock-bootstrap/SKILL.md", "skills/planrock-dashboard/SKILL.md", "dist/dashboard/index.html", "dist/dashboard/dependency-inventory.json", ...new Set(Object.values(licensed.packages).map((entry) => entry.licenseFile)), "LICENSES/production-bundle.json", "THIRD_PARTY_NOTICES.md"]) assert.ok(packed[0].files.some((file) => file.path === required), `missing ${required}`);
 run("npm", ["install", "--ignore-scripts", "--prefix", prefix, tarball]);
 const cli = path.join(prefix, "node_modules", ".bin", "planrock");
 const local = JSON.parse(run(cli, ["status", "--working-dir", workspace, "--json"])); assert.equal(local.summary.open, 1);
