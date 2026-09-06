@@ -23,6 +23,7 @@
   },
   "files": [
     "SKILL.md",
+    "references/",
     "skills/",
     "agents/",
     "scripts/planrock",
