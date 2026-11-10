@@ -55,7 +55,7 @@ When the user asks to continue, implement, or inspect a specific saved plan:
     `node <skill-dir>/scripts/planrock validate <path> --working-dir <working-dir>`
     and correct every reported
     warning or error before continuing.
-12. When a plan is genuinely complete, close it according to that working directory's plan rules and validate the closed plan again.
+12. When a plan is genuinely complete, close it in this order: set `state: closed` and `closed_at` in the frontmatter, run `node <skill-dir>/scripts/planrock validate <path> --working-dir <working-dir>` while the file is still directly under `plans/`, and only after it passes move the file to the destination the working directory's rules require (commonly `plans/history/`). Validate rejects any path outside `plans/`, so moving first means the closed plan can never be validated; a closed plan missing `closed_at` also only warns, which wastes a run.
 
 Agent sessions frontmatter example:
 
