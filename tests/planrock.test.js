@@ -340,7 +340,9 @@ test("skill requires CLI creation and validation after every plan mutation", () 
   assert.match(skillMarkdown, /scripts\/planrock create <slug>/);
   assert.match(skillMarkdown, /After every plan mutation/);
   assert.match(skillMarkdown, /scripts\/planrock validate <path>/);
-  assert.match(skillMarkdown, /validate the closed plan again/);
+  assert.match(skillMarkdown, /close it in this order: set `state: closed` and `closed_at`/);
+  assert.match(skillMarkdown, /while the file is still directly under `plans\/`/);
+  assert.match(skillMarkdown, /only after it passes move the file/);
 });
 
 test("legacy local commands tolerate unsupported nested frontmatter", () => {
